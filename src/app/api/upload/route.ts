@@ -1,27 +1,28 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { randomUUID } from "node:crypto";
 import { assertSameOrigin, requireApiUser, serializeError } from "@/lib/api";
-import { createVideoUploadUrl } from "@/lib/storage";
+import { persistUpload } from "@/lib/services/videoService";
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+const MAX_UPLOAD_BYTES = 250 * 1024 * 1024;
+
+export async function POST(request: Request): Promise<NextResponse> {
   try {
     await requireApiUser();
     assertSameOrigin(request);
 
-    const body = (await request.json().catch(() => ({}))) as { name?: string };
-    const name = body.name ?? "video.mp4";
-    const extension = (name.split(".").pop() ?? "mp4").toLowerCase();
-    if (!["mp4", "webm", "mov"].includes(extension)) {
-      return NextResponse.json(
-        { error: "Formato de video no admitido. Use MP4, WebM o MOV." },
-        { status: 415 },
-      );
+    const formData = await request.formData();
+    const file = formData.get("file");
+
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "Debe adjuntar un archivo de video." }, { status: 400 });
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ error: "El video supera el límite de 250 MB." }, { status: 413 });
     }
 
-    const videoId = randomUUID();
-    const { path, url } = await createVideoUploadUrl(videoId, `.${extension}`);
-    return NextResponse.json({ videoId, path, uploadUrl: url });
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const filename = persistUpload(buffer, file.name);
+
+    return NextResponse.json({ file: filename });
   } catch (error) {
     return serializeError(error);
   }

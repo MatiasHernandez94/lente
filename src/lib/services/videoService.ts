@@ -1,5 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join, extname } from "node:path";
 import { generateAnalysis } from "@/lib/analysis/engine";
 import type { AnalysisResult, SourceType, Sport } from "@/lib/analysis/types";
 import {
@@ -13,6 +15,27 @@ import {
 import type { VideoRow } from "@/lib/schema";
 
 const SIMULATED_PROCESS_MS = 1200;
+
+const DATA_DIR = join(process.cwd(), "data", "uploads");
+const ALLOWED_VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".mkv", ".avi"];
+
+export function persistUpload(buffer: Buffer, originalName: string): string {
+  const extension = extname(originalName).toLowerCase();
+  if (!ALLOWED_VIDEO_EXTENSIONS.includes(extension)) {
+    throw new ApiServiceError(415, "Formato de video no admitido.");
+  }
+  if (extension === ".avi" || extension === ".mkv") {
+    throw new ApiServiceError(
+      415,
+      "Este formato no es reproducible en navegadores. Use MP4, WebM o MOV.",
+    );
+  }
+
+  mkdirSync(DATA_DIR, { recursive: true });
+  const filename = `${randomUUID()}${extension}`;
+  writeFileSync(join(DATA_DIR, filename), buffer);
+  return filename;
+}
 
 export interface NewVideoInput {
   userId: string;
