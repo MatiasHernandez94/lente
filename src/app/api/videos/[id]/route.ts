@@ -8,12 +8,12 @@ export async function GET(_request: NextRequest, ctx: RouteContext<"/api/videos/
     const user = await requireApiUser();
     const { id } = await ctx.params;
 
-    const video = getVideoById(id);
+    const video = await getVideoById(id);
     if (!video || video.userId !== user.id) {
       return NextResponse.json({ error: "El video no existe o no le corresponde." }, { status: 404 });
     }
 
-    const analysis = getAnalysisForVideo(video.id);
+    const analysis = await getAnalysisForVideo(video.id);
     return NextResponse.json({ video, analysis });
   } catch (error) {
     return serializeError(error);

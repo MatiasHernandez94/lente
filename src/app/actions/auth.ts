@@ -37,12 +37,13 @@ export async function register(_prevState: AuthFormState | undefined, formData: 
 
   const { name, email, password } = parsed.data;
 
-  if (findUserByEmail(email)) {
+  const existing = await findUserByEmail(email);
+  if (existing) {
     return { message: "Ya existe una cuenta con ese correo." };
   }
 
   const passwordHash = bcrypt.hashSync(password, 10);
-  createUser({
+  await createUser({
     id: randomUUID(),
     name,
     email,
@@ -50,7 +51,7 @@ export async function register(_prevState: AuthFormState | undefined, formData: 
     createdAt: new Date().toISOString(),
   });
 
-  const user = findUserByEmail(email);
+  const user = await findUserByEmail(email);
   if (user) {
     await createSession(user.id);
   }
@@ -74,7 +75,7 @@ export async function login(_prevState: AuthFormState | undefined, formData: For
   }
 
   const { email, password } = parsed.data;
-  const user = findUserByEmail(email);
+  const user = await findUserByEmail(email);
 
   if (!user || !bcrypt.compareSync(password, user.passwordHash)) {
     return { message: "Correo o contraseña incorrectos." };

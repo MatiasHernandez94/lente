@@ -35,3 +35,19 @@ export interface AnalysisRecord {
   result: AnalysisResult;
   generatedAt: string;
 }
+
+export interface ScoutRow {
+  videoId: string;
+  status: string;
+  fps: number | null;
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+  tracksJson: string | null;
+  teamsJson: string | null;
+  playersJson: string | null;
+  calibrationJson: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

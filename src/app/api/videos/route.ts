@@ -6,7 +6,7 @@ import { createVideoSchema } from "@/lib/validation";
 export async function GET(): Promise<NextResponse> {
   try {
     const user = await requireApiUser();
-    return NextResponse.json({ videos: listUserVideos(user.id) });
+    return NextResponse.json({ videos: await listUserVideos(user.id) });
   } catch (error) {
     return serializeError(error);
   }
@@ -38,7 +38,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.json({ error: "La URL de YouTube no es válida." }, { status: 400 });
     }
 
-    const video = createPendingVideo({
+    const video = await createPendingVideo({
       userId: user.id,
       title,
       sport,

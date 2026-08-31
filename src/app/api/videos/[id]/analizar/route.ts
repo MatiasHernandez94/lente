@@ -11,7 +11,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/videos/
     const { id } = await ctx.params;
 
     const video = await runAnalysis(id, user.id);
-    const analysis = getAnalysisForVideo(video.id);
+    const analysis = await getAnalysisForVideo(video.id);
 
     return NextResponse.json({ video, analysis });
   } catch (error) {

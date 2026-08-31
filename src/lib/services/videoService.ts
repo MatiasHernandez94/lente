@@ -1,7 +1,5 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join, extname } from "node:path";
 import { generateAnalysis } from "@/lib/analysis/engine";
 import type { AnalysisResult, SourceType, Sport } from "@/lib/analysis/types";
 import {
@@ -14,10 +12,7 @@ import {
 } from "@/lib/repo";
 import type { VideoRow } from "@/lib/schema";
 
-const DATA_DIR = join(process.cwd(), "data", "uploads");
 const SIMULATED_PROCESS_MS = 1200;
-
-const ALLOWED_VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".mkv", ".avi"];
 
 export interface NewVideoInput {
   userId: string;
@@ -29,7 +24,7 @@ export interface NewVideoInput {
   players: string[];
 }
 
-export function createPendingVideo(input: NewVideoInput): VideoRow {
+export async function createPendingVideo(input: NewVideoInput): Promise<VideoRow> {
   return insertVideo({
     id: randomUUID(),
     userId: input.userId,
@@ -43,26 +38,8 @@ export function createPendingVideo(input: NewVideoInput): VideoRow {
   });
 }
 
-export function persistUpload(buffer: Buffer, originalName: string): string {
-  const extension = extname(originalName).toLowerCase();
-  if (!ALLOWED_VIDEO_EXTENSIONS.includes(extension)) {
-    throw new ApiServiceError(415, "Formato de video no admitido.");
-  }
-  if (extension === ".avi" || extension === ".mkv") {
-    throw new ApiServiceError(
-      415,
-      "Este formato no es reproducible en navegadores. Use MP4, WebM o MOV.",
-    );
-  }
-
-  mkdirSync(DATA_DIR, { recursive: true });
-  const filename = `${randomUUID()}${extension}`;
-  writeFileSync(join(DATA_DIR, filename), buffer);
-  return filename;
-}
-
 export async function runAnalysis(videoId: string, userId: string): Promise<VideoRow> {
-  const video = getVideoById(videoId);
+  const video = await getVideoById(videoId);
   if (!video || video.userId !== userId) {
     throw new ApiServiceError(404, "El video no existe o no corresponde al usuario.");
   }
@@ -71,12 +48,12 @@ export async function runAnalysis(videoId: string, userId: string): Promise<Vide
     throw new ApiServiceError(409, "El video ya se encuentra procesado o en proceso.");
   }
 
-  updateVideoStatus(video.id, "analyzing");
+  await updateVideoStatus(video.id, "analyzing");
 
   const startedAt = Date.now();
   let result: AnalysisResult;
   try {
-result = generateAnalysis(
+    result = generateAnalysis(
       video.id,
       video.sport,
       video.durationSeconds ?? 1800,
@@ -91,29 +68,32 @@ result = generateAnalysis(
   }
 
   try {
-    saveAnalysis(video.id, result, new Date().toISOString());
-    updateVideoStatus(video.id, "ready");
+    await saveAnalysis(video.id, result, new Date().toISOString());
+    await updateVideoStatus(video.id, "ready");
   } catch (error) {
     const message = error instanceof ApiServiceError ? error.message : "El análisis no pudo completarse.";
-    updateVideoStatus(video.id, "error", message);
+    await updateVideoStatus(video.id, "error", message);
     throw error;
   }
 
-  return getVideoById(video.id) as VideoRow;
+  return (await getVideoById(video.id)) as VideoRow;
 }
 
 export interface ListItem extends VideoRow {
   analysis: { score: number; generatedAt: string } | null;
 }
 
-export function listUserVideos(userId: string): ListItem[] {
-  return listVideosByUser(userId).map((video) => {
-    const analysis = getAnalysisForVideo(video.id);
-    return {
+export async function listUserVideos(userId: string): Promise<ListItem[]> {
+  const videos = await listVideosByUser(userId);
+  const items: ListItem[] = [];
+  for (const video of videos) {
+    const analysis = await getAnalysisForVideo(video.id);
+    items.push({
       ...video,
       analysis: analysis ? { score: analysis.score, generatedAt: analysis.generatedAt } : null,
-    };
-  });
+    });
+  }
+  return items;
 }
 
 export class ApiServiceError extends Error {
@@ -169,9 +149,10 @@ const DEMO_EXAMPLES: DemoExample[] = [
   },
 ];
 
-export function createDemoExamples(userId: string): VideoRow[] {
-  return DEMO_EXAMPLES.map((example) => {
-    const video = createPendingVideo({
+export async function createDemoExamples(userId: string): Promise<VideoRow[]> {
+  const created: VideoRow[] = [];
+  for (const example of DEMO_EXAMPLES) {
+    const video = await createPendingVideo({
       userId,
       title: example.title,
       sport: example.sport,
@@ -183,12 +164,13 @@ export function createDemoExamples(userId: string): VideoRow[] {
 
     try {
       const result = generateAnalysis(video.id, video.sport, video.durationSeconds ?? 1800, example.players);
-      saveAnalysis(video.id, result, new Date().toISOString());
-      updateVideoStatus(video.id, "ready");
+      await saveAnalysis(video.id, result, new Date().toISOString());
+      await updateVideoStatus(video.id, "ready");
     } catch (error) {
-      updateVideoStatus(video.id, "error", "El ejemplo no pudo procesarse.");
+      await updateVideoStatus(video.id, "error", "El ejemplo no pudo procesarse.");
       throw error;
     }
-    return getVideoById(video.id) as VideoRow;
-  });
+    created.push((await getVideoById(video.id)) as VideoRow);
+  }
+  return created;
 }

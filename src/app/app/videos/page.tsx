@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Videos" };
 
 export default async function VideosPage() {
   const user = await getSessionUser();
-  const videos = user ? listUserVideos(user.id) : [];
+  const videos = user ? await listUserVideos(user.id) : [];
 
   return (
     <div className="space-y-8">

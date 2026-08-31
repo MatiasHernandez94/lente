@@ -27,7 +27,7 @@ function StatCard({ label, value, detail }: StatCardProps) {
 
 export default async function DashboardPage() {
   const user = await getSessionUser();
-  const videos = user ? listUserVideos(user.id) : [];
+  const videos = user ? await listUserVideos(user.id) : [];
 
   const ready = videos.filter((video) => video.status === "ready");
   const pending = videos.filter((video) => video.status === "pending" || video.status === "analyzing");

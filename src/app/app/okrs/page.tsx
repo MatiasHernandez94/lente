@@ -14,23 +14,26 @@ export const metadata: Metadata = { title: "OKRs" };
 
 export default async function OkrsPage() {
   const user = await getSessionUser();
-  const videos = user ? listUserVideos(user.id) : [];
+  const videos = user ? await listUserVideos(user.id) : [];
   const ready = videos.filter((video) => video.status === "ready");
 
-  const bundles = ready.flatMap((video) => {
-    const analysis = getAnalysisForVideo(video.id);
-    return analysis
-      ? [
-          {
-            videoId: video.id,
-            videoTitle: video.title,
-            sport: video.sport,
-            score: analysis.score,
-            result: analysis.result,
-          },
-        ]
-      : [];
-  });
+  const analysisBundles = await Promise.all(
+    ready.map(async (video) => {
+      const analysis = await getAnalysisForVideo(video.id);
+      return analysis
+        ? [
+            {
+              videoId: video.id,
+              videoTitle: video.title,
+              sport: video.sport,
+              score: analysis.score,
+              result: analysis.result,
+            },
+          ]
+        : [];
+    }),
+  );
+  const bundles = analysisBundles.flat();
 
   const aggregated = aggregateAnalyses(bundles);
   const topOkrs = collectOkrs(bundles).slice(0, 6);
