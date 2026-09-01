@@ -27,10 +27,6 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(url);
   }
 
-  if ((pathname === "/login" || pathname === "/registro") && authenticated) {
-    return NextResponse.redirect(new URL("/app", request.url));
-  }
-
   return NextResponse.next();
 }
 

@@ -24,9 +24,7 @@ export function AppShell({ userName, children }: AppShellProps) {
     <div className="flex min-h-dvh flex-col bg-canvas">
       <header className="sticky top-0 z-20 border-b border-hairline bg-canvas/95 backdrop-blur-sm">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-6 px-6">
-          <Link href="/app" className="shrink-0" aria-label="Lente — resumen">
-            <Logo href="/app" />
-          </Link>
+          <Logo href="/app" className="shrink-0" />
 
           <nav className="hidden items-center gap-1 md:flex" aria-label="Navegación principal">
             {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
