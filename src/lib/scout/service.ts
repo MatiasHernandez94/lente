@@ -1,8 +1,8 @@
 import "server-only";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import type { VideoRow } from "@/lib/schema";
@@ -22,11 +22,19 @@ import type {
 } from "@/lib/scout/types";
 import { makeCalibration, computePlayerMetrics } from "@/lib/scout/geom";
 import { ApiServiceError } from "@/lib/services/videoService";
-import { getSignedVideoUrl } from "@/lib/storage";
 
 const execFileAsync = promisify(execFile);
 const ANALYZE_SCRIPT = join(process.cwd(), "scripts", "scout", "analyze.mjs");
 const ANALYSIS_FPS = 5;
+const UPLOADS_DIR = join(process.cwd(), "data", "uploads");
+
+function ytdlpPath(): string {
+  const fromEnv = process.env.YT_DLP_PATH;
+  if (fromEnv) return fromEnv;
+  const pipPath = join(process.env.HOME ?? "", "Library", "Python", "3.14", "bin", "yt-dlp");
+  if (existsSync(pipPath)) return pipPath;
+  return "yt-dlp";
+}
 
 const RUN_LOCAL = process.env.LENTE_RUN_SCOUT_LOCAL === "1";
 
@@ -43,27 +51,16 @@ export async function startScout(video: VideoRow): Promise<void> {
 }
 
 async function runScoutPipeline(video: VideoRow): Promise<void> {
-  if (!video.sourceRef) {
-    await updateScoutStatus(video.id, "error", "El video no tiene archivo fuente.");
-    return;
-  }
-  const signedUrl = await getSignedVideoUrl(video.sourceRef);
-  if (!signedUrl) {
-    await updateScoutStatus(video.id, "error", "No se pudo acceder al video.");
-    return;
-  }
-  const localVideo = await downloadVideo(signedUrl, video.id);
-  if (!localVideo) {
-    await updateScoutStatus(video.id, "error", "No se pudo descargar el video.");
-    return;
-  }
   const outFile = join(tmpdir(), `scout-${video.id}-${randomUUID()}.json`);
   try {
-    await execFileAsync(
-      process.execPath,
-      [ANALYZE_SCRIPT, localVideo, outFile, `fps=${ANALYSIS_FPS}`, "width=960"],
-      { timeout: 60000 * 30 },
-    );
+    if (!video.sourceRef) {
+      throw new Error("El video no tiene archivo fuente.");
+    }
+    const localVideo = await resolveSourceVideo(video);
+    const args = [ANALYZE_SCRIPT, localVideo, outFile, `fps=${ANALYSIS_FPS}`, "width=960"];
+    const maxFrames = process.env.LENTE_SCOUT_MAX_FRAMES;
+    if (maxFrames) args.push(`max-frames=${maxFrames}`);
+    await execFileAsync(process.execPath, args, { timeout: 60000 * 30 });
     const data = JSON.parse(readFileSync(outFile, "utf8")) as ScoutResultData;
     await saveScoutResult(video.id, data);
   } catch (error) {
@@ -75,14 +72,40 @@ async function runScoutPipeline(video: VideoRow): Promise<void> {
   }
 }
 
-async function downloadVideo(url: string, videoId: string): Promise<string | null> {
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const buf = Buffer.from(await res.arrayBuffer());
-  const localPath = join(tmpdir(), `scout-${videoId}-${randomUUID()}.mp4`);
-  const { writeFile } = await import("node:fs/promises");
-  await writeFile(localPath, buf);
-  return localPath;
+async function resolveSourceVideo(video: VideoRow): Promise<string> {
+  if (video.sourceType === "youtube") {
+    return downloadYoutube(video.sourceRef as string, video.id);
+  }
+  const filePath = join(UPLOADS_DIR, video.sourceRef as string);
+  if (!existsSync(filePath)) {
+    throw new Error("El archivo de video no está disponible en almacenamiento local.");
+  }
+  return filePath;
+}
+
+async function downloadYoutube(url: string, videoId: string): Promise<string> {
+  const out = join(tmpdir(), `scout-${videoId}-${randomUUID()}.%(ext)s`);
+  const ffmpegBin = join(process.cwd(), "node_modules", "ffmpeg-static", "ffmpeg");
+  const args = [
+    "--js-runtimes",
+    "node",
+    "--no-playlist",
+    "-f",
+    "bv*+ba/b",
+    "-o",
+    out,
+  ];
+  if (existsSync(ffmpegBin)) args.push("--ffmpeg-location", dirname(ffmpegBin));
+  args.push(url);
+  const sections = Number(process.env.LENTE_SCOUT_MAX_SECONDS);
+  if (Number.isFinite(sections) && sections > 0) args.push("--download-sections", `*0:00-${sections}`);
+  const { stderr } = await execFileAsync(ytdlpPath(), args, { timeout: 60000 * 30 });
+  for (const ext of [".mp4", ".mkv", ".webm", ".m4a"]) {
+    const candidate = out.replace(".%(ext)s", ext);
+    if (existsSync(candidate)) return candidate;
+  }
+  const detail = stderr.split("\n").filter(Boolean).slice(-4).join(" | ");
+  throw new Error(detail || "yt-dlp no produjo salida");
 }
 
 
