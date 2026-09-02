@@ -1,6 +1,6 @@
 import type { SourceType } from "@/lib/analysis/types";
 
-function youtubeEmbedUrl(url: string): string | null {
+export function youtubeEmbedUrl(url: string): string | null {
   const match = url.match(
     /(?:youtube\.com\/(?:watch\?v=|shorts\/|live\/|embed\/))([A-Za-z0-9_-]{11})|youtu\.be\/([A-Za-z0-9_-]{11})/,
   );

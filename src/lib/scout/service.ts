@@ -22,11 +22,16 @@ import type {
 } from "@/lib/scout/types";
 import { makeCalibration, computePlayerMetrics } from "@/lib/scout/geom";
 import { ApiServiceError } from "@/lib/services/videoService";
+import { generateDemoScout } from "@/lib/scout/demo";
 
 const execFileAsync = promisify(execFile);
 const ANALYZE_SCRIPT = join(process.cwd(), "scripts", "scout", "analyze.mjs");
 const ANALYSIS_FPS = 5;
 const UPLOADS_DIR = join(process.cwd(), "data", "uploads");
+
+function isDemoVideo(video: VideoRow): boolean {
+  return typeof video.title === "string" && video.title.startsWith("Ejemplo —");
+}
 
 function ytdlpPath(): string {
   const fromEnv = process.env.YT_DLP_PATH;
@@ -110,13 +115,25 @@ async function downloadYoutube(url: string, videoId: string): Promise<string> {
 
 
 export async function getScoutData(video: VideoRow): Promise<ScoutResultData | null> {
+  await ensureDemoScout(video);
   const row = await getScoutAnalysis(video.id);
   return row?.status === "ready" && row.tracksJson ? (JSON.parse(row.tracksJson) as ScoutResultData) : null;
 }
 
 export async function getScoutStatus(video: VideoRow): Promise<ScoutStatus> {
+  await ensureDemoScout(video);
   return ((await getScoutAnalysis(video.id))?.status ?? "none") as ScoutStatus;
 }
+
+async function ensureDemoScout(video: VideoRow): Promise<void> {
+  if (!isDemoVideo(video)) return;
+  const row = await getScoutAnalysis(video.id);
+  if (row?.status === "ready" && row.tracksJson) return;
+  if (row?.status === "running" || row?.status === "error") return;
+  await generateDemoScout(video.id, video.sport, (video.players ?? []).length);
+}
+
+export { ensureDemoScout };
 
 export async function saveCalibration(
   video: VideoRow,
@@ -181,18 +198,21 @@ export async function savePlayerAssignment(
 }
 
 export async function listScoutAssignments(video: VideoRow): Promise<ScoutAssignment[]> {
+  await ensureDemoScout(video);
   const row = await getScoutAnalysis(video.id);
   if (!row?.playersJson) return [];
   return JSON.parse(row.playersJson) as ScoutAssignment[];
 }
 
 export async function getScoutCalibration(video: VideoRow): Promise<ScoutCalibration | null> {
+  await ensureDemoScout(video);
   const row = await getScoutAnalysis(video.id);
   if (!row?.calibrationJson) return null;
   return JSON.parse(row.calibrationJson) as ScoutCalibration;
 }
 
 export async function scoutPlayerMetrics(video: VideoRow): Promise<ScoutPlayerMetrics[]> {
+  await ensureDemoScout(video);
   const data = await getScoutData(video);
   const assignments = await listScoutAssignments(video);
   const calibration = await getScoutCalibration(video);

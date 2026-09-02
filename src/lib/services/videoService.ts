@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join, extname } from "node:path";
 import { generateAnalysis } from "@/lib/analysis/engine";
 import type { AnalysisResult, SourceType, Sport } from "@/lib/analysis/types";
+import { generateDemoScout } from "@/lib/scout/demo";
 import {
   createVideo as insertVideo,
   getAnalysisForVideo,
@@ -189,6 +190,7 @@ export async function createDemoExamples(userId: string): Promise<VideoRow[]> {
       const result = generateAnalysis(video.id, video.sport, video.durationSeconds ?? 1800, example.players);
       await saveAnalysis(video.id, result, new Date().toISOString());
       await updateVideoStatus(video.id, "ready");
+      await generateDemoScout(video.id, video.sport, example.players.length);
     } catch (error) {
       await updateVideoStatus(video.id, "error", "El ejemplo no pudo procesarse.");
       throw error;

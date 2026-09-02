@@ -35,7 +35,8 @@ export default async function VideoDetailPage({ params }: DetailPageProps) {
             {analysis ? ` · Procesado el ${formatShortDate(analysis.generatedAt)}` : ""}
           </p>
         </div>
-        {(video.sourceType === "upload" || video.sourceType === "camera") && video.sourceRef ? (
+        {((video.sourceType === "upload" || video.sourceType === "camera") && video.sourceRef) ||
+        (video.sourceType === "youtube" && video.title?.startsWith("Ejemplo —")) ? (
           <Link
             href={`/app/videos/${video.id}/escout`}
             className="inline-flex items-center gap-2 border border-ink/20 px-4 py-2 text-[13px] font-medium text-ink transition-colors hover:border-ink hover:bg-surface"

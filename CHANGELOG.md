@@ -29,6 +29,18 @@ Registro de cambios del proyecto LENTE (plataforma de análisis deportivo). Form
   - Los sprints (≥ 18 km/h) se resaltan en el color del equipo.
   - `ScoutViewer` muestra la gráfica del primer jugador asignado por defecto y cambia de jugador al
     hacer clic sobre uno en el video.
+- Los videos de ejemplo (demostración, ej. "Ejemplo — Final olímpica de baloncesto") ahora
+  funcionan en el seguimiento (scout) con datos sintéticos pre-cargados, sin ejecutar el pipeline
+  pesado de visión por computadora.
+  - Nuevo `src/lib/scout/demo.ts` que genera trayectorias y calibración de cancha realistas y las
+    persiste con `saveScoutResult` / `saveScoutCalibration`.
+  - `createDemoExamples` genera también el scout sintético al crear cada ejemplo.
+  - Jugadores de ejemplo que ya existían en la base de datos se rellenan on-demand al abrir el
+    seguimiento (`ensureDemoScout`).
+  - `ScoutViewer` muestra el video de ejemplo embebido (iframe de YouTube) con una línea de tiempo
+    deslizable para recorrer las visualizaciones (velocidad, mapa de calor, KPIs).
+  - La página de detalle del video muestra el enlace "Seguimiento de jugadores" también para los
+    ejemplos de YouTube.
 
 ### Correcciones
 

@@ -22,6 +22,7 @@ import { SpeedChart } from "@/components/scout/SpeedChart";
 import { HeatMap } from "@/components/scout/HeatMap";
 import { KpiBars } from "@/components/scout/KpiBars";
 import { CoachAssistant } from "@/components/scout/CoachAssistant";
+import { youtubeEmbedUrl } from "@/components/analysis/VideoFrame";
 
 interface ScoutViewerProps {
   video: VideoRow;
@@ -119,6 +120,11 @@ export function ScoutViewer({ video, initial }: ScoutViewerProps) {
 
   const mediaUrl = `/api/media/${encodeURIComponent(video.sourceRef ?? "")}`;
   const fps = data?.analysis.fps ?? 5;
+
+  const isLocal = video.sourceType === "upload" || video.sourceType === "camera";
+  const isDemoYoutube = video.sourceType === "youtube";
+  const embedUrl = isDemoYoutube && video.sourceRef ? youtubeEmbedUrl(video.sourceRef) : null;
+  const demoDuration = data?.video.durationSec ?? 60;
 
   useEffect(() => {
     statusRef.current = status;
@@ -461,7 +467,9 @@ export function ScoutViewer({ video, initial }: ScoutViewerProps) {
           .filter((m): m is ScoutAssignment & { metrics: ReturnType<typeof computeTrackMetrics> } => m !== null)
       : null;
 
-  if (video.sourceType !== "upload" && video.sourceType !== "camera") {
+  const videoIsUsable = isLocal || data !== null;
+
+  if (!videoIsUsable) {
     return (
       <div className="border border-hairline bg-surface px-6 py-12 text-center">
         <Radio size={28} strokeWidth={1.5} className="mx-auto mb-4 text-soft" aria-hidden="true" />
@@ -578,32 +586,62 @@ export function ScoutViewer({ video, initial }: ScoutViewerProps) {
 
       <div
         ref={containerRef}
-        className="relative aspect-video w-full cursor-pointer overflow-hidden bg-ink"
-        onClick={handleVideoClick}
+        className="relative aspect-video w-full overflow-hidden bg-ink"
+        onClick={isLocal ? handleVideoClick : undefined}
         role="group"
         aria-label="Video con seguimiento de jugadores"
       >
-        <video
-          ref={videoRef}
-          src={mediaUrl}
-          controls
-          playsInline
-          preload="metadata"
-          className="absolute inset-0 h-full w-full"
-          onTimeUpdate={() => {
-            const videoEl = videoRef.current;
-            if (!videoEl) return;
-            const now = Date.now();
-            if (now - tickRef.current > 400) {
-              tickRef.current = now;
-              setCurrentTime(videoEl.currentTime);
-            }
-          }}
-        >
-          <p className="p-4 text-sm text-white">Su navegador no puede reproducir este video.</p>
-        </video>
-        <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true" />
+        {isLocal ? (
+          <>
+            <video
+              ref={videoRef}
+              src={mediaUrl}
+              controls
+              playsInline
+              preload="metadata"
+              className="absolute inset-0 h-full w-full"
+              onTimeUpdate={() => {
+                const videoEl = videoRef.current;
+                if (!videoEl) return;
+                const now = Date.now();
+                if (now - tickRef.current > 400) {
+                  tickRef.current = now;
+                  setCurrentTime(videoEl.currentTime);
+                }
+              }}
+            >
+              <p className="p-4 text-sm text-white">Su navegador no puede reproducir este video.</p>
+            </video>
+            <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true" />
+          </>
+        ) : embedUrl ? (
+          <iframe
+            src={embedUrl}
+            title={`Video fuente: ${video.title}`}
+            className="absolute inset-0 h-full w-full"
+            loading="lazy"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerPolicy="strict-origin-when-cross-origin"
+            allowFullScreen
+          />
+        ) : null}
       </div>
+      {isDemoYoutube && data ? (
+        <div className="flex items-center gap-3">
+          <span className="label shrink-0 text-muted">{formatTime(currentTime)}</span>
+          <input
+            type="range"
+            min={0}
+            max={demoDuration}
+            step={0.2}
+            value={Math.min(currentTime, demoDuration)}
+            onChange={(event) => setCurrentTime(Number(event.target.value))}
+            className="w-full"
+            aria-label="Línea de tiempo del análisis de ejemplo"
+          />
+          <span className="label shrink-0 text-muted">{formatTime(demoDuration)}</span>
+        </div>
+      ) : null}
 
       <EventBoard
         video={video}

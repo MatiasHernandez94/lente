@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ScoutViewer } from "@/components/scout/ScoutViewer";
 import { getVideoById } from "@/lib/repo";
 import {
+  ensureDemoScout,
   getScoutCalibration,
   getScoutData,
   getScoutStatus,
@@ -27,6 +28,8 @@ export default async function ScoutPage({ params }: ScoutPageProps) {
   if (!video || user === null || video.userId !== user.id) {
     notFound();
   }
+
+  await ensureDemoScout(video);
 
   const snapshot: ScoutSnapshot = {
     status: await getScoutStatus(video),
