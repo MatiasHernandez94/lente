@@ -42,6 +42,23 @@ Registro de cambios del proyecto LENTE (plataforma de análisis deportivo). Form
   - La página de detalle del video muestra el enlace "Seguimiento de jugadores" también para los
     ejemplos de YouTube.
 
+### Modificado
+
+- Mapa de calor (`src/components/scout/HeatMap.tsx`) rediseñado para que se adapte al deporte del
+  video y se vea como un análisis real de zonas ocupadas (estilo NBA), en lugar de una cancha de
+  fútbol fija con círculos sueltos:
+  - Dibuja la **cancha correcta según el deporte** (fútbol 105×68, baloncesto 28×15, pádel 20×10,
+    voleibol 18×9) con sus líneas reales (`src/components/scout/sportCourt.tsx`).
+  - Pinta un **gradiente térmico suave** (azul → naranja → rojo) con desenfoque, donde el color más
+    intenso marca las zonas de mayor presencia del jugador.
+- Las trayectorias sintéticas de los videos de ejemplo (`src/lib/scout/demo.ts`) ahora son **zonas
+  de preferencia realistas por deporte y rol** (delantero en el área, escolta junto al aro, zona de
+  red en pádel, ataque en voleibol) en lugar de un paseo aleatorio uniforme, de modo que el mapa de
+  calor de los demos muestra hotspots creíbles y no "cualquier cosa".
+  - Los demos ya existentes se regeneran automáticamente (`ensureDemoScout` compara
+    `meta.demoVersion`; los guardados sin versión o con versión anterior se recalculan al abrir el
+    seguimiento).
+
 ### Correcciones
 
 - `instantSpeedAt` validaba solo la coordenada `x` de la homografía; ahora valida también `y`, lo

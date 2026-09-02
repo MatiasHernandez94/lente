@@ -22,7 +22,7 @@ import type {
 } from "@/lib/scout/types";
 import { makeCalibration, computePlayerMetrics } from "@/lib/scout/geom";
 import { ApiServiceError } from "@/lib/services/videoService";
-import { generateDemoScout } from "@/lib/scout/demo";
+import { generateDemoScout, DEMO_VERSION } from "@/lib/scout/demo";
 
 const execFileAsync = promisify(execFile);
 const ANALYZE_SCRIPT = join(process.cwd(), "scripts", "scout", "analyze.mjs");
@@ -128,8 +128,15 @@ export async function getScoutStatus(video: VideoRow): Promise<ScoutStatus> {
 async function ensureDemoScout(video: VideoRow): Promise<void> {
   if (!isDemoVideo(video)) return;
   const row = await getScoutAnalysis(video.id);
-  if (row?.status === "ready" && row.tracksJson) return;
   if (row?.status === "running" || row?.status === "error") return;
+  if (row?.status === "ready" && row.tracksJson) {
+    try {
+      const data = JSON.parse(row.tracksJson) as ScoutResultData;
+      if (data.meta?.demoVersion === DEMO_VERSION) return;
+    } catch {
+      // resultado corrupto: regenerar
+    }
+  }
   await generateDemoScout(video.id, video.sport, (video.players ?? []).length);
 }
 

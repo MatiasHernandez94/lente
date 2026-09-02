@@ -720,6 +720,7 @@ export function ScoutViewer({ video, initial }: ScoutViewerProps) {
                 playerName={playerName}
               />
               <HeatMap
+                sport={video.sport}
                 track={chartTrack}
                 calibration={calibration}
                 color={chartColor}

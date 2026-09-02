@@ -9,6 +9,8 @@ const DEMO_DURATION_SEC = 96;
 const PLAYER_W = 0.05;
 const PLAYER_H = 0.09;
 
+export const DEMO_VERSION = 2;
+
 const COURT_DIMS: Record<string, { width: number; height: number }> = {
   futbol: { width: 105, height: 68 },
   baloncesto: { width: 28, height: 15 },
@@ -17,103 +19,138 @@ const COURT_DIMS: Record<string, { width: number; height: number }> = {
   default: { width: 28, height: 15 },
 };
 
-interface TrajectorySegment {
-  t0: number;
-  t1: number;
-  speedMps: number;
-  angleRad: number;
+interface Anchor {
+  x: number;
+  y: number;
+  radius: number;
 }
 
-const TWO_PI = Math.PI * 2;
+const MARGIN = 1.5;
 
-function buildTrajectory(x0m: number, y0m: number, courtW: number, courtH: number): TrajectorySegment[] {
-  const segs: TrajectorySegment[] = [];
-  let t = 0;
-  const margin = 1.5;
-  const xMin = margin;
-  const xMax = courtW - margin;
-  const yMin = margin;
-  const yMax = courtH - margin;
-  let x = Math.min(Math.max(x0m, xMin), xMax);
-  let y = Math.min(Math.max(y0m, yMin), yMax);
-  let angle = Math.random() * TWO_PI;
+function randomInCircle(cx: number, cy: number, r: number): { x: number; y: number } {
+  const ang = Math.random() * Math.PI * 2;
+  const rad = Math.sqrt(Math.random()) * r;
+  return { x: cx + rad * Math.cos(ang), y: cy + rad * Math.sin(ang) };
+}
 
-  while (t < DEMO_DURATION_SEC) {
-    const remaining = DEMO_DURATION_SEC - t;
-    const walkRoll = Math.random();
-    let speed: number;
-    let segLen: number;
-    if (walkRoll < 0.45) {
-      speed = 1.4 + Math.random() * 0.6;
-      segLen = Math.min(remaining, 4 + Math.random() * 3);
-    } else if (walkRoll < 0.78) {
-      speed = 2.4 + Math.random() * 1.1;
-      segLen = Math.min(remaining, 3 + Math.random() * 2.5);
-    } else {
-      speed = 5.2 + Math.random() * 1.4;
-      segLen = Math.min(remaining, 1.8 + Math.random() * 1.2);
+function dist(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
+}
+
+/**
+ * Define una zona de preferencia realista por deporte y rol del jugador.
+ * El jugador 0 (el que se selecciona primero en la UI) recibe la zona
+ * más icónica del deporte para que el mapa de calor se vea reconocible.
+ */
+function pickAnchor(sport: string, index: number, courtW: number, courtH: number): Anchor {
+  const cx = courtW / 2;
+  const cy = courtH / 2;
+
+  switch (sport) {
+    case "baloncesto": {
+      const side = index % 2 === 0 ? 1 : -1;
+      const rimX = cx + side * courtW * 0.38; // aro cercano
+      const roles: Anchor[] = [
+        { x: rimX, y: cy, radius: 3.6 },
+        { x: cx, y: cy, radius: 3.0 },
+        { x: rimX - side * 2.0, y: cy + 3.4, radius: 2.6 },
+        { x: rimX + side * 2.5, y: cy - 3.2, radius: 2.4 },
+        { x: rimX, y: cy - side * 4.0, radius: 2.8 },
+      ];
+      return roles[index % roles.length];
     }
-    const t1 = t + segLen;
-    segs.push({ t0: t, t1, speedMps: speed, angleRad: angle });
-
-    const step = speed * segLen;
-    x += step * Math.cos(angle);
-    y += step * Math.sin(angle);
-    if (x < xMin || x > xMax || y < yMin || y > yMax) {
-      angle = Math.atan2(-Math.sin(angle), -Math.cos(angle));
-      x = Math.min(Math.max(x, xMin), xMax);
-      y = Math.min(Math.max(y, yMin), yMax);
-    } else {
-      angle += (Math.random() - 0.5) * 0.9;
+    case "futbol": {
+      const roles: Anchor[] = [
+        { x: courtW * 0.75, y: cy, radius: 17 },
+        { x: courtW * 0.15, y: cy, radius: 15 },
+        { x: cx, y: cy, radius: 14 },
+        { x: courtW * 0.9, y: 20, radius: 14 },
+        { x: courtW * 0.1, y: 48, radius: 14 },
+        { x: courtW * 0.55, y: cy, radius: 16 },
+      ];
+      return roles[index % roles.length];
     }
-    t += segLen;
+    case "padel": {
+      const netX = courtW / 2;
+      const roles: Anchor[] = [
+        { x: netX + (index % 2 === 0 ? 0.4 : -0.4), y: courtH * 0.28, radius: 1.9 },
+        { x: netX + (index % 2 === 0 ? -0.5 : 0.5), y: courtH * 0.78, radius: 2.2 },
+        { x: netX, y: courtH * 0.5, radius: 2.0 },
+      ];
+      return roles[index % roles.length];
+    }
+    case "voleibol": {
+      const netY = courtH * 0.33;
+      const roles: Anchor[] = [
+        { x: cx, y: netY, radius: 1.5 },
+        { x: courtW * 0.28, y: netY, radius: 1.3 },
+        { x: courtW * 0.72, y: netY, radius: 1.3 },
+        { x: cx, y: courtH * 0.78, radius: 1.4 },
+        { x: courtW * 0.3, y: courtH * 0.78, radius: 1.3 },
+      ];
+      return roles[index % roles.length];
+    }
+    default: {
+      return { x: cx, y: cy, radius: courtW * 0.25 };
+    }
   }
-  return segs;
 }
 
-function sampleTrajectory(
-  segs: TrajectorySegment[],
-  x0m: number,
-  y0m: number,
-  courtW: number,
-  courtH: number,
-): ScoutPoint[] {
+/**
+ * Genera una trayectoria "zonificada": el jugador deambula dentro de su zona
+ * de preferencia (densidad alta en el centro, de ahí el hotspot del mapa de
+ * calor) y de vez en cuando hace una incursión fuera de la zona antes de volver.
+ */
+function zonedTrajectory(anchor: Anchor, courtW: number, courtH: number): ScoutPoint[] {
   const pts: ScoutPoint[] = [];
-  const margin = 1.5;
-  let x = Math.min(Math.max(x0m, margin), courtW - margin);
-  let y = Math.min(Math.max(y0m, margin), courtH - margin);
+  const pos = randomInCircle(anchor.x, anchor.y, anchor.radius * 0.3);
+  let roamTarget = randomInCircle(anchor.x, anchor.y, anchor.radius);
 
   for (let i = 0; i <= DEMO_DURATION_SEC * FPS; i++) {
     const t = i / FPS;
-    const seg = findSegment(segs, t);
-    if (!seg) break;
-    x = Math.min(Math.max(x + seg.speedMps * Math.cos(seg.angleRad) * (1 / FPS), margin), courtW - margin);
-    y = Math.min(Math.max(y + seg.speedMps * Math.sin(seg.angleRad) * (1 / FPS), margin), courtH - margin);
+
+    // De vez en cuando, una incursión puntual fuera de la zona.
+    const excursion = i % Math.floor(FPS * 12) === 0;
+    let baseX = anchor.x;
+    let baseY = anchor.y;
+    let r = anchor.radius;
+    if (excursion) {
+      baseX = courtW * (0.2 + Math.random() * 0.6);
+      baseY = courtH * (0.2 + Math.random() * 0.6);
+      r = Math.max(2, courtW * 0.12);
+    }
+
+    if (dist(pos, roamTarget) < 1.2 || excursion) {
+      roamTarget = randomInCircle(baseX, baseY, r);
+    }
+
+    const dirX = roamTarget.x - pos.x;
+    const dirY = roamTarget.y - pos.y;
+    const d = Math.hypot(dirX, dirY) || 1;
+    const unitX = dirX / d;
+    const unitY = dirY / d;
+
+    // Más lento cerca del centro de la zona => mayor densidad (zona caliente).
+    const fromCenter = dist(pos, { x: anchor.x, y: anchor.y }) / anchor.radius;
+    const speed = clamp(0.9 + fromCenter * 3.2, 0.5, 4.2);
+
+    pos.x = clamp(pos.x + unitX * speed * (1 / FPS), MARGIN, courtW - MARGIN);
+    pos.y = clamp(pos.y + unitY * speed * (1 / FPS), MARGIN, courtH - MARGIN);
+
     pts.push({
       t,
-      x: x / courtW,
-      y: y / courtH,
+      x: pos.x / courtW,
+      y: pos.y / courtH,
       w: PLAYER_W,
       h: PLAYER_H,
     });
   }
+
   return pts;
-}
-
-function findSegment(segs: TrajectorySegment[], t: number): TrajectorySegment | null {
-  for (const seg of segs) {
-    if (t >= seg.t0 && t < seg.t1) return seg;
-  }
-  return segs[segs.length - 1] ?? null;
-}
-
-function teamColorHex(team: "A" | "B"): [number, number, number] {
-  const raw = TEAM_COLORS[team].stroke.replace("#", "");
-  return [
-    parseInt(raw.slice(0, 2), 16),
-    parseInt(raw.slice(2, 4), 16),
-    parseInt(raw.slice(4, 6), 16),
-  ];
 }
 
 export function buildDemoScoutData(sport: string, playerCount: number): ScoutResultData {
@@ -123,10 +160,8 @@ export function buildDemoScoutData(sport: string, playerCount: number): ScoutRes
 
   for (let i = 0; i < count; i++) {
     const team: "A" | "B" = i % 2 === 0 ? "A" : "B";
-    const x0m = (i % 6) / 6 * width;
-    const y0m = ((i % 4) / 4) * height;
-    const segs = buildTrajectory(x0m, y0m, width, height);
-    const points = sampleTrajectory(segs, x0m, y0m, width, height);
+    const anchor = pickAnchor(sport, i, width, height);
+    const points = zonedTrajectory(anchor, width, height);
     if (points.length === 0) continue;
     tracks.push({
       id: i,
@@ -142,6 +177,7 @@ export function buildDemoScoutData(sport: string, playerCount: number): ScoutRes
     analysis: { fps: FPS, frames: DEMO_DURATION_SEC * FPS },
     tracks,
     teams: { A: teamColorHex("A"), B: teamColorHex("B") },
+    meta: { demoVersion: DEMO_VERSION },
   };
 }
 
@@ -162,4 +198,13 @@ export async function generateDemoScout(
     ],
     { width, height },
   ));
+}
+
+function teamColorHex(team: "A" | "B"): [number, number, number] {
+  const raw = TEAM_COLORS[team].stroke.replace("#", "");
+  return [
+    parseInt(raw.slice(0, 2), 16),
+    parseInt(raw.slice(2, 4), 16),
+    parseInt(raw.slice(4, 6), 16),
+  ];
 }

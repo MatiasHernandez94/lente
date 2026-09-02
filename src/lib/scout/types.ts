@@ -26,6 +26,7 @@ export interface ScoutResultData {
   analysis: { fps: number; frames: number };
   tracks: ScoutTrack[];
   teams: ScoutTeams | null;
+  meta?: { demoVersion?: number };
 }
 
 export interface ScoutCalibration {
