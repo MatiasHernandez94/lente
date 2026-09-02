@@ -18,6 +18,7 @@ import { SELECTED_COLOR, TEAM_COLORS, UNASSIGNED_COLOR } from "@/lib/scout/color
 import { Button } from "@/components/ui/Button";
 import { Field, Select, TextInput } from "@/components/ui/Field";
 import { EventBoard } from "@/components/scout/EventBoard";
+import { SpeedChart } from "@/components/scout/SpeedChart";
 
 interface ScoutViewerProps {
   video: VideoRow;
@@ -634,6 +635,20 @@ export function ScoutViewer({ video, initial }: ScoutViewerProps) {
           </div>
         </section>
       ) : null}
+
+      {(() => {
+        const chartTrackId = selectedTrackId ?? (liveMetrics?.[0]?.trackId ?? null);
+        const chartAssignment = chartTrackId !== null ? assignments.find((a) => a.trackId === chartTrackId) ?? null : null;
+        return chartTrackId !== null && data && calibration ? (
+          <SpeedChart
+            track={data.tracks.find((track) => track.id === chartTrackId) ?? data.tracks[0]}
+            calibration={calibration}
+            currentTime={currentTime}
+            color={chartAssignment ? TEAM_COLORS[chartAssignment.team].stroke : "#ffffff"}
+            playerName={chartAssignment?.name ?? `Jugador ${chartTrackId + 1}`}
+          />
+        ) : null;
+      })()}
 
       {calibrating ? (
         <section className="border border-hairline bg-surface p-5">
