@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Crosshair, Play, Radio, RefreshCw, Users } from "lucide-react";
+import { ArrowLeft, BarChart3, Crosshair, Play, Radio, RefreshCw, Users } from "lucide-react";
 import type { VideoRow } from "@/lib/schema";
 import type {
   ScoutAssignment,
@@ -19,6 +19,9 @@ import { Button } from "@/components/ui/Button";
 import { Field, Select, TextInput } from "@/components/ui/Field";
 import { EventBoard } from "@/components/scout/EventBoard";
 import { SpeedChart } from "@/components/scout/SpeedChart";
+import { HeatMap } from "@/components/scout/HeatMap";
+import { KpiBars } from "@/components/scout/KpiBars";
+import { CoachAssistant } from "@/components/scout/CoachAssistant";
 
 interface ScoutViewerProps {
   video: VideoRow;
@@ -530,6 +533,23 @@ export function ScoutViewer({ video, initial }: ScoutViewerProps) {
           <span className="label text-muted">
             {totalTracks} {totalTracks === 1 ? "jugador detectado" : "jugadores detectados"}
           </span>
+          {data && data.tracks.length > 0 ? (
+            <Select
+              value={selectedTrackId ?? -1}
+              onChange={(event) => setSelectedTrackId(Number(event.target.value))}
+              aria-label="Seleccionar jugador"
+            >
+              <option value={-1}>Seleccionar jugador…</option>
+              {data.tracks.map((track) => {
+                const name = assignments.find((a) => a.trackId === track.id)?.name ?? `Jugador ${track.id + 1}`;
+                return (
+                  <option key={track.id} value={track.id}>
+                    {name}
+                  </option>
+                );
+              })}
+            </Select>
+          ) : null}
           {data?.teams ? (
             <span className="label flex items-center gap-1.5 text-muted">
               <span className="size-2" style={{ backgroundColor: `rgb(${data.teams.A.join(",")})` }} aria-hidden="true" />
@@ -637,17 +657,39 @@ export function ScoutViewer({ video, initial }: ScoutViewerProps) {
       ) : null}
 
       {(() => {
-        const chartTrackId = selectedTrackId ?? (liveMetrics?.[0]?.trackId ?? null);
+        const firstTrackId = data?.tracks[0]?.id ?? null;
+        const chartTrackId = selectedTrackId ?? firstTrackId;
         const chartAssignment = chartTrackId !== null ? assignments.find((a) => a.trackId === chartTrackId) ?? null : null;
-        return chartTrackId !== null && data && calibration ? (
-          <SpeedChart
-            track={data.tracks.find((track) => track.id === chartTrackId) ?? data.tracks[0]}
-            calibration={calibration}
-            currentTime={currentTime}
-            color={chartAssignment ? TEAM_COLORS[chartAssignment.team].stroke : "#ffffff"}
-            playerName={chartAssignment?.name ?? `Jugador ${chartTrackId + 1}`}
-          />
-        ) : null;
+        const chartTrack =
+          chartTrackId !== null && data ? data.tracks.find((track) => track.id === chartTrackId) ?? null : null;
+        if (!chartTrack || !data || !calibration) return null;
+        const playerName = chartAssignment?.name ?? `Jugador ${chartTrack.id + 1}`;
+        const chartColor = chartAssignment ? TEAM_COLORS[chartAssignment.team].stroke : TEAM_COLORS.A.stroke;
+        return (
+          <section aria-label={`Análisis de ${playerName}`}>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-base font-medium text-ink">
+                <Users size={17} strokeWidth={1.8} aria-hidden="true" />
+                Análisis de {playerName}
+              </h2>
+            </div>
+            <div className="grid gap-5 lg:grid-cols-2">
+              <SpeedChart
+                track={chartTrack}
+                calibration={calibration}
+                currentTime={currentTime}
+                color={chartColor}
+                playerName={playerName}
+              />
+              <HeatMap
+                track={chartTrack}
+                calibration={calibration}
+                color={chartColor}
+                playerName={playerName}
+              />
+            </div>
+          </section>
+        );
       })()}
 
       {calibrating ? (
@@ -761,6 +803,24 @@ export function ScoutViewer({ video, initial }: ScoutViewerProps) {
           )}
         </section>
       ) : null}
+
+      {data && calibration ? (
+        <section>
+          <div className="mb-3 flex items-center gap-2">
+            <BarChart3 size={17} strokeWidth={1.8} aria-hidden="true" />
+            <h2 className="text-base font-medium text-ink">Comparativa de jugadores</h2>
+          </div>
+          <KpiBars tracks={data.tracks} assignments={assignments} calibration={calibration} fps={fps} />
+        </section>
+      ) : null}
+
+      <CoachAssistant
+        playerName={
+          selectedTrackId !== null
+            ? assignments.find((a) => a.trackId === selectedTrackId)?.name ?? `Jugador ${selectedTrackId + 1}`
+            : null
+        }
+      />
 
       {error ? <p className="text-sm text-red-900">{error}</p> : null}
     </div>

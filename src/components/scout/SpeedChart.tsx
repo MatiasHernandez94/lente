@@ -57,7 +57,7 @@ export function SpeedChart({ track, calibration, currentTime, color, playerName 
     );
   }
 
-  const yMax = Math.max(MAX_SPEED_DEFAULT, maxSpeed * 1.1);
+  const yMax = Math.max(MAX_SPEED_DEFAULT, Number.isFinite(maxSpeed) ? maxSpeed * 1.1 : 0);
   const plotW = W - PAD_LEFT - PAD_RIGHT;
   const plotH = H - PAD_TOP - PAD_BOTTOM;
   const x = (t: number) => PAD_LEFT + ((t - tMin) / (tMax - tMin || 1)) * plotW;
@@ -90,7 +90,7 @@ export function SpeedChart({ track, calibration, currentTime, color, playerName 
     <div>
       <div className="mb-2 flex items-center justify-between">
         <span className="label text-muted">Velocidad en el tiempo</span>
-        {cursor && cursorV !== null ? (
+        {cursor && cursorV !== null && Number.isFinite(cursorV) ? (
           <span className="text-sm font-semibold" style={{ color }}>
             {cursorV.toFixed(1)} km/h
           </span>
@@ -105,12 +105,12 @@ export function SpeedChart({ track, calibration, currentTime, color, playerName 
           style={{ maxWidth: W + 24 }}
         >
           <line x1={PAD_LEFT} y1={H - PAD_BOTTOM} x2={W - PAD_RIGHT} y2={H - PAD_BOTTOM} stroke="currentColor" strokeOpacity={0.2} />
-          <polyline points={linePath} fill="none" stroke="currentColor" strokeOpacity={0.35} strokeWidth={1} />
+          <path d={linePath} fill="none" stroke="currentColor" strokeOpacity={0.35} strokeWidth={1} />
           {sprintPaths.map((d, i) => (
             <path key={i} d={d} fill="none" stroke={color} strokeWidth={2} />
           ))}
           {cursor ? <line x1={cursorX} y1={PAD_TOP} x2={cursorX} y2={H - PAD_BOTTOM} stroke="currentColor" strokeWidth={1} strokeDasharray="3 3" /> : null}
-          {cursor ? <circle cx={cursorX} cy={y(cursorV ?? 0)} r={3.5} fill={color} /> : null}
+          {cursor ? <circle cx={cursorX} cy={y(Number.isFinite(cursorV ?? 0) ? cursorV ?? 0 : 0)} r={3.5} fill={color} /> : null}
           <text x={PAD_LEFT + 2} y={H - 6} fontSize={9} fill="currentColor" fillOpacity={0.6}>{formatTime(tMin)}</text>
           <text x={W - PAD_RIGHT - 2} y={H - 6} fontSize={9} fill="currentColor" fillOpacity={0.6} textAnchor="end">{formatTime(tMax)}</text>
         </svg>

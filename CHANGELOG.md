@@ -14,6 +14,15 @@ Registro de cambios del proyecto LENTE (plataforma de análisis deportivo). Form
 
 ### Añadido
 
+- Cuatro visualizaciones nuevas en el seguimiento (scout), todas con datos reales (no mock):
+  - **Selector de jugador**: dropdown en la cabecera para elegir entre los jugadores detectados; la
+    sección de análisis se actualiza al cambiar de jugador.
+  - **Mapa de calor** (`src/components/scout/HeatMap.tsx`): zonas más frecuentadas por un jugador
+    dibujadas sobre la cancha (105 × 68), usando la homografía de calibración.
+  - **Comparativa de jugadores** (`src/components/scout/KpiBars.tsx`): gráfico de barras de
+    velocidad máxima y de distancia recorrida por cada jugador detectado.
+  - **Asistente Técnico IA** (`src/components/scout/CoachAssistant.tsx`): maqueta de chat (sin
+    funcionalidad todavía, campo de entrada deshabilitado).
 - Curva de velocidad vs tiempo por jugador en el seguimiento (scout).
   - Nuevo componente `src/components/scout/SpeedChart.tsx` (SVG accesible, `role="img"`).
   - Muestra la velocidad instantánea (km/h) a lo largo del tiempo con un marcador vertical en el
@@ -21,6 +30,13 @@ Registro de cambios del proyecto LENTE (plataforma de análisis deportivo). Form
   - Los sprints (≥ 18 km/h) se resaltan en el color del equipo.
   - `ScoutViewer` muestra la gráfica del primer jugador asignado por defecto y cambia de jugador al
     hacer clic sobre uno en el video.
+
+### Correcciones
+
+- `instantSpeedAt` validaba solo la coordenada `x` de la homografía; ahora valida también `y`, lo
+  que eliminaba valores `NaN` en la curva de velocidad.
+- La curva de velocidad usaba `<polyline points>` con sintaxis de `<path>` (`M… L…`), lo que
+  generaba un error de consola; ahora usa `<path d>`.
 
 ---
 

@@ -197,7 +197,14 @@ export function instantSpeedAt(track: ScoutTrack, H: number[][], t: number): num
   if (!q) return 0;
   const a = applyHomography(H, p.x, p.y);
   const b = applyHomography(H, q.x, q.y);
-  if (!Number.isFinite(a.x) || !Number.isFinite(b.x)) return 0;
+  if (
+    !Number.isFinite(a.x) ||
+    !Number.isFinite(a.y) ||
+    !Number.isFinite(b.x) ||
+    !Number.isFinite(b.y)
+  ) {
+    return 0;
+  }
   const distM = Math.hypot(a.x - b.x, a.y - b.y);
   return (distM / INSTANT_WINDOW_SECONDS) * 3.6;
 }
