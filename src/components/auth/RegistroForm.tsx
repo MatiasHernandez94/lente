@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
+import { LoaderCircle } from "lucide-react";
 import { register } from "@/app/actions/auth";
 import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
@@ -52,7 +53,13 @@ export function RegistroForm() {
         ) : null}
       </Field>
       <Button type="submit" size="lg" className="w-full" disabled={pending}>
-        {pending ? "Creando cuenta…" : "Crear cuenta"}
+        {pending ? (
+          <span className="inline-flex items-center gap-2">
+            <LoaderCircle size={16} className="animate-spin" aria-hidden="true" /> Creando cuenta…
+          </span>
+        ) : (
+          "Crear cuenta"
+        )}
       </Button>
       <p className="pt-2 text-center text-sm text-muted">
         ¿Ya tiene una cuenta?{" "}

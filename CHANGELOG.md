@@ -14,8 +14,7 @@ Registro de cambios del proyecto LENTE (plataforma de análisis deportivo). Form
 
 ### Añadido
 
-- Cuatro visualizaciones nuevas en el seguimiento (scout), todas con datos reales (no mock):
-  - **Selector de jugador**: dropdown en la cabecera para elegir entre los jugadores detectados; la
+- Cuatro visualizaciones nuevas en el seguimiento (scout), todas con datos reales (no mock):  - **Selector de jugador**: dropdown en la cabecera para elegir entre los jugadores detectados; la
     sección de análisis se actualiza al cambiar de jugador.
   - **Mapa de calor** (`src/components/scout/HeatMap.tsx`): zonas más frecuentadas por un jugador
     dibujadas sobre la cancha (105 × 68), usando la homografía de calibración.
@@ -37,6 +36,11 @@ Registro de cambios del proyecto LENTE (plataforma de análisis deportivo). Form
   que eliminaba valores `NaN` en la curva de velocidad.
 - La curva de velocidad usaba `<polyline points>` con sintaxis de `<path>` (`M… L…`), lo que
   generaba un error de consola; ahora usa `<path d>`.
+- En autenticación, `bcrypt.hashSync`/`compareSync` (síncronos) se reemplazaron por `bcrypt.hash`/
+  `bcrypt.compare` (asíncronos), que no bloquean el event loop del servidor (mejora la sensación de
+  "cuelgue" en la request de login/registro).
+- Los botones de login/registro muestran ahora un spinner de carga mientras el `pending` está
+  activo, para que no parezca que la operación se quedó pensando.
 
 ---
 

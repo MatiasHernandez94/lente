@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
+import { LoaderCircle } from "lucide-react";
 import { login } from "@/app/actions/auth";
 import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
@@ -38,7 +39,13 @@ export function LoginForm() {
       </Field>
       {state?.errors?.form ? <p role="alert" className="text-sm text-red-900">{state.errors.form[0]}</p> : null}
       <Button type="submit" size="lg" className="w-full" disabled={pending}>
-        {pending ? "Ingresando…" : "Ingresar"}
+        {pending ? (
+          <span className="inline-flex items-center gap-2">
+            <LoaderCircle size={16} className="animate-spin" aria-hidden="true" /> Ingresando…
+          </span>
+        ) : (
+          "Ingresar"
+        )}
       </Button>
       <p className="pt-2 text-center text-sm text-muted">
         ¿No tiene una cuenta?{" "}
