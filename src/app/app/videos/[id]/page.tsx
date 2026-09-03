@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Crosshair } from "lucide-react";
+import { Activity, Crosshair } from "lucide-react";
 import { AnalysisDetail } from "@/components/analysis/AnalysisDetail";
 import { getAnalysisForVideo, getVideoById } from "@/lib/repo";
 import { getSessionUser } from "@/lib/session";
@@ -44,6 +44,17 @@ export default async function VideoDetailPage({ params }: DetailPageProps) {
             <Crosshair size={15} strokeWidth={1.8} aria-hidden="true" />
             <span className="hidden sm:inline">Seguimiento de jugadores</span>
             <span className="sm:hidden">Seguimiento</span>
+          </Link>
+        ) : null}
+        {((video.sourceType === "upload" || video.sourceType === "camera") && video.sourceRef) ||
+        (video.sourceType === "youtube" && video.title?.startsWith("Ejemplo —")) ? (
+          <Link
+            href={`/app/videos/${video.id}/execution`}
+            className="inline-flex items-center gap-2 border border-ink/20 px-4 py-2 text-[13px] font-medium text-ink transition-colors hover:border-ink hover:bg-surface"
+          >
+            <Activity size={15} strokeWidth={1.8} aria-hidden="true" />
+            <span className="hidden sm:inline">Ejecución de ejercicio</span>
+            <span className="sm:hidden">Ejecución</span>
           </Link>
         ) : null}
       </header>

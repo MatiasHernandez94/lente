@@ -51,3 +51,17 @@ export interface ScoutRow {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface ExecutionRow {
+  videoId: string;
+  status: string;
+  fps: number | null;
+  width: number | null;
+  height: number | null;
+  durationSeconds: number | null;
+  exerciseId: string | null;
+  resultJson: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

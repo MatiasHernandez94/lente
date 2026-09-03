@@ -1,8 +1,9 @@
 import "server-only";
 import { getClient } from "./db";
-import type { AnalysisRecord, AnalysisRow, ScoutRow, UserRow, VideoRow } from "./schema";
+import type { AnalysisRecord, AnalysisRow, ExecutionRow, ScoutRow, UserRow, VideoRow } from "./schema";
 import type { AnalysisResult, SourceType, Sport, VideoStatus } from "./analysis/types";
 import type { ScoutCalibration, ScoutResultData, ScoutAssignment } from "./scout/types";
+import type { ExecutionResult } from "./execution/types";
 import type { VideoEvent } from "./events/meta";
 
 function postError(operation: string, error: unknown): never {
@@ -334,4 +335,99 @@ export async function createVideoEvent(input: VideoEvent): Promise<void> {
 export async function deleteVideoEvent(id: string): Promise<void> {
   const { error } = await getClient().from("video_events").delete().eq("id", id);
   if (error) postError("deleteVideoEvent", error);
+}
+
+type ExecutionColumnRow = {
+  video_id: string;
+  status: string;
+  fps: number | null;
+  width: number | null;
+  height: number | null;
+  duration_seconds: number | null;
+  exercise_id: string | null;
+  result_json: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const EXECUTION_COLUMNS =
+  "video_id, status, fps, width, height, duration_seconds, exercise_id, result_json, error_message, created_at, updated_at";
+
+const parseExecutionRow = (row: ExecutionColumnRow): ExecutionRow => ({
+  videoId: row.video_id,
+  status: row.status,
+  fps: row.fps,
+  width: row.width,
+  height: row.height,
+  durationSeconds: row.duration_seconds,
+  exerciseId: row.exercise_id,
+  resultJson: row.result_json,
+  errorMessage: row.error_message,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+export async function getExecutionAnalysis(videoId: string): Promise<ExecutionRow | null> {
+  const { data, error } = await getClient()
+    .from("execution_analyses")
+    .select(EXECUTION_COLUMNS)
+    .eq("video_id", videoId)
+    .maybeSingle();
+  if (error) postError("getExecutionAnalysis", error);
+  if (!data) return null;
+  return parseExecutionRow(data as ExecutionColumnRow);
+}
+
+async function ensureExecutionRow(videoId: string): Promise<void> {
+  const now = new Date().toISOString();
+  const { error } = await getClient().from("execution_analyses").upsert(
+    { video_id: videoId, status: "none", created_at: now, updated_at: now },
+    { onConflict: "video_id", ignoreDuplicates: true },
+  );
+  if (error) postError("ensureExecutionRow", error);
+}
+
+export async function updateExecutionStatus(
+  videoId: string,
+  status: string,
+  errorMessage: string | null = null,
+): Promise<void> {
+  await ensureExecutionRow(videoId);
+  const { error } = await getClient()
+    .from("execution_analyses")
+    .update({ status, error_message: errorMessage, updated_at: new Date().toISOString() })
+    .eq("video_id", videoId);
+  if (error) postError("updateExecutionStatus", error);
+}
+
+export async function saveExecutionResult(
+  videoId: string,
+  result: ExecutionResult,
+  exerciseId: string | null,
+): Promise<void> {
+  await ensureExecutionRow(videoId);
+  const { error } = await getClient()
+    .from("execution_analyses")
+    .update({
+      status: "ready",
+      fps: result.analysis.fps,
+      width: result.video.width,
+      height: result.video.height,
+      duration_seconds: Math.round(result.video.durationSec),
+      exercise_id: exerciseId,
+      result_json: JSON.stringify(result),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("video_id", videoId);
+  if (error) postError("saveExecutionResult", error);
+}
+
+export async function saveExecutionExercise(videoId: string, exerciseId: string): Promise<void> {
+  await ensureExecutionRow(videoId);
+  const { error } = await getClient()
+    .from("execution_analyses")
+    .update({ exercise_id: exerciseId, updated_at: new Date().toISOString() })
+    .eq("video_id", videoId);
+  if (error) postError("saveExecutionExercise", error);
 }

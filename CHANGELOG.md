@@ -7,12 +7,43 @@ Registro de cambios del proyecto LENTE (plataforma de análisis deportivo). Form
 > La feature de **seguimiento (scout)** con análisis pesado (ONNX + ffmpeg) está pensada para
 > ejecutarse **en local** (`LENTE_RUN_SCOUT_LOCAL=1`). En Vercel (serverless) no puede correr el
 > pipeline pesado, por lo que el panel de seguimiento está deshabilitado / limitado en producción.
+>
+> El **análisis de ejecución de ejercicios** sigue el mismo principio: el pipeline de detección de
+> pose (ViTPose/ONNX) corre solo en local (`LENTE_RUN_EXECUTION_LOCAL=1`); los videos de ejemplo
+> funcionan con datos sintéticos pre-cargados.
 
 ---
 
 ## [No publicado]
 
 ### Añadido
+
+- Nuevo módulo de **análisis de ejecución de ejercicios** (movilidad / fuerza) a partir de video.
+  - **Motor de evaluación** (`src/lib/execution/`): catálogo de 10 ejercicios
+    (`exercises.ts`), geometría de ángulos articulares, control de movimiento, detección de
+    repeticiones y puntuación global basada en rango, ritmo, control y simetría (`geom.ts`).
+    - `EXERCISES` / `EXERCISE_BY_ID`, `MOVILIDAD`, `FUERZA` con especificaciones por articulación
+      (rodilla, cadera, tronco, codo, hombro, alineación, apertura de cadera).
+    - `evaluateExercise` produce una evaluación completa: `joints`, `reps`, `symmetry` y `score`.
+    - Tests con `node --test` (`geom.test.ts`, 8 casos) vía `npm test`.
+  - **Esqueleto FK 2D** (`skeleton.ts`): genera poses coherentes de perfil y frontal desde ángulos
+    articulares, usado por los demos sintéticos.
+  - **Persistencia** (`repo.ts`, `schema.ts`): tabla `execution_analyses` (1:1 con `videos`,
+    `ON DELETE CASCADE`) con `status`, `fps`, `exercise_id`, `result_json` y `error_message`.
+  - **Servicio** (`service.ts`): `startExecution` (gate `LENTE_RUN_EXECUTION_LOCAL=1`),
+    `generateDemoExecution` versionado, y `evaluateForExercise` que recalcula la puntuación al
+    cambiar de ejercicio (`DEMO_VERSION`).
+  - **Pipeline local** (`scripts/execution/analyze.mjs`): detección de pose con ViTPose
+    (`AutoModelForPoseEstimation` + `AutoImageProcessor`) y ffmpeg, emitiendo fotogramas con
+    keypoints normalizados.
+  - **API** `/api/videos/[id]/execution`: `GET` (snapshot con evaluación), `POST` (iniciar),
+    `PATCH` (cambiar ejercicio).
+  - **UI** `/app/videos/[id]/execution`: `ExecutionViewer` con esqueleto SVG sobre el video
+    (sincronizado con el tiempo de reproducción), selector de ejercicio, semáforo/verdict por
+    puntuación, tabla de ángulos articulares, detección de repeticiones y métricas de
+    rango/control/ritmo/simetría.
+  - Enlace "Ejecución de ejercicio" desde el detalle de cada video.
+  - Migración SQL `supabase/migrations/0002_execution.sql` (aplicar en el SQL Editor de Supabase).
 
 - Cuatro visualizaciones nuevas en el seguimiento (scout), todas con datos reales (no mock):  - **Selector de jugador**: dropdown en la cabecera para elegir entre los jugadores detectados; la
     sección de análisis se actualiza al cambiar de jugador.
