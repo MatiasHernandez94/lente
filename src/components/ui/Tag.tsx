@@ -3,6 +3,7 @@ import { SOURCE_LABEL, SPORT_LABEL } from "@/lib/sports";
 import type { Sport } from "@/lib/analysis/types";
 
 const SPORT_TONES: Record<Sport, string> = {
+  general: "border-ink/25 text-ink",
   futbol: "border-ink/25 text-ink",
   padel: "border-ink/25 text-ink",
   voleibol: "border-ink/25 text-ink",

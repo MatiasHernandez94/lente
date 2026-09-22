@@ -1,6 +1,7 @@
 import type { Sport } from "./analysis/types";
 
 export const PLAYER_LABEL: Record<Sport, string> = {
+  general: "Análisis general",
   futbol: "Once contra once",
   padel: "Dos contra dos",
   voleibol: "Seis contra seis",

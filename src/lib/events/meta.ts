@@ -25,6 +25,7 @@ export interface VideoEvent {
 }
 
 export const EVENT_TYPES_BY_SPORT: Record<Sport, EventType[]> = {
+  general: ["made", "missed", "assist", "turnover", "foul", "pause"],
   baloncesto: ["made", "missed", "assist", "rebound", "turnover", "foul", "pause"],
   futbol: ["made", "missed", "assist", "turnover", "foul", "pause"],
   padel: ["made", "missed", "assist", "turnover", "pause"],
@@ -42,6 +43,7 @@ const BASE_LABELS: Record<EventType, string> = {
 };
 
 export const EVENT_LABELS_BY_SPORT: Record<Sport, Record<EventType, string>> = {
+  general: { ...BASE_LABELS },
   baloncesto: { ...BASE_LABELS },
   futbol: {
     ...BASE_LABELS,

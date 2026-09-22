@@ -8,6 +8,11 @@ export interface SportInfo {
 
 export const SPORTS: SportInfo[] = [
   {
+    value: "general",
+    label: "General",
+    description: "Análisis universal: detección de personas, movimiento y métricas generales.",
+  },
+  {
     value: "futbol",
     label: "Fútbol",
     description: "Once contra once. Análisis de posesión, creación y definición.",

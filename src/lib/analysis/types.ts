@@ -1,4 +1,4 @@
-export type Sport = "futbol" | "padel" | "voleibol" | "baloncesto";
+export type Sport = "futbol" | "padel" | "voleibol" | "baloncesto" | "general";
 export type SourceType = "camera" | "upload" | "youtube";
 export type VideoStatus = "pending" | "analyzing" | "ready" | "error";
 

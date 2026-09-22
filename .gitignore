@@ -51,3 +51,9 @@ next-env.d.ts
 # entorno con secretos
 .env.local
 .env*.local
+
+# python pipeline (sports/scout)
+__pycache__/
+*.pyc
+scripts/sports/*.pt
+.python */

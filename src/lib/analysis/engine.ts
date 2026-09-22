@@ -82,6 +82,55 @@ function buildHighlights(
     .sort((a, b) => Number.parseInt(a.minute, 10) - Number.parseInt(b.minute, 10));
 }
 
+const general: SportModel = {
+  secondsPerUnit: 600,
+  metrics(r, minutes) {
+    const t = timescale(r, minutes, 30);
+    const personas = Math.round((3 + r() * 15) * t);
+    const velocidad = round1(2 + r() * 6);
+    const distancia = round1((0.5 + r() * 3) * t);
+    const actividad = 40 + r() * 40;
+    return [
+      metric("personas", "Personas detectadas", `${personas}`, "", "≥ 5", 30 + personas * 4),
+      metric("velocidad", "Velocidad promedio", `${velocidad}`, "m/s", "≥ 4 m/s", 40 + velocidad * 8),
+      metric("distancia", "Distancia total", `${distancia}`, "km", "≥ 2 km", 35 + distancia * 15),
+      metric("actividad", "Nivel de actividad", `${actividad.toFixed(0)}`, "%", "≥ 60 %", actividad * 1.1),
+    ];
+  },
+  okrs(r, metrics, minutes) {
+    const m = Object.fromEntries(metrics.map((x) => [x.key, x]));
+    return [
+      {
+        objective: "Actividad general",
+        keyResults: [
+          { label: "Velocidad promedio sobre 4 m/s", value: m.velocidad.value, target: "4" },
+          { label: "Distancia total sobre 2 km", value: m.distancia.value, target: "2" },
+        ],
+        progress: clampRating((Number(m.velocidad.rating) + Number(m.distancia.rating)) / 2),
+      },
+      {
+        objective: "Participación",
+        keyResults: [
+          { label: "Personas detectadas sobre 5", value: m.personas.value, target: "5" },
+          { label: "Nivel de actividad sobre 60 %", value: m.actividad.value, target: "60" },
+        ],
+        progress: clampRating(Number(m.personas.rating) + 4),
+      },
+    ];
+  },
+  highlights: [
+    { title: "Movimiento detectado", detail: "Se identificó actividad física con movimiento constante del sujeto.", category: "Actividad" },
+    { title: "Período de alta intensidad", detail: "Momento del video con velocidad superior al promedio.", category: "Intensidad" },
+    { title: "Pausa en la actividad", detail: "Período de baja actividad que podría indicar descanso o preparación.", category: "Recuperación" },
+    { title: "Desplazamiento lateral", detail: "Movimiento lateral detectado, indicando agilidad o cambio de dirección.", category: "Agilidad" },
+    { title: "Ritmo constante", detail: "Mantenimiento de ritmo estable durante el segmento analizado.", category: "Consistencia" },
+  ],
+  summary(score, metrics, top) {
+    const m = Object.fromEntries(metrics.map((x) => [x.key, x]));
+    return `Se detectaron ${m.personas.value} persona(s) con velocidad promedio de ${m.velocidad.value} m/s y distancia total de ${m.distancia.value} km. Nivel de actividad: ${m.actividad.value} %. Momento destacado: «${top.title}». Calificación global: ${score}/100.`;
+  },
+};
+
 const futbol: SportModel = {
   secondsPerUnit: 5400,
   metrics(r, minutes) {
@@ -320,7 +369,7 @@ const baloncesto: SportModel = {
   },
 };
 
-const MODELS: Record<Sport, SportModel> = { futbol, padel, voleibol, baloncesto };
+const MODELS: Record<Sport, SportModel> = { general, futbol, padel, voleibol, baloncesto };
 
 interface PlayerModel {
   positions: string[];
@@ -330,6 +379,28 @@ interface PlayerModel {
 }
 
 const PLAYER_MODELS: Record<Sport, PlayerModel> = {
+  general: {
+    positions: ["Sujeto"],
+    heatmapDims: { cols: 10, rows: 7 },
+    movement(r, factor) {
+      return {
+        distanceKm: round1((1 + r() * 3) * factor),
+        avgSpeedKmh: round1(3 + r() * 4),
+        maxSpeedKmh: round1(12 + r() * 8),
+        sprints: Math.round((2 + r() * 8) * factor),
+      };
+    },
+    kpis(r, factor) {
+      const velocidad = round1(2 + r() * 5);
+      const distancia = round1((0.5 + r() * 2) * factor);
+      const actividad = 40 + r() * 40;
+      return [
+        metric("velocidad", "Velocidad promedio", `${velocidad}`, "m/s", "≥ 3 m/s", 35 + velocidad * 10),
+        metric("distancia", "Distancia recorrida", `${distancia}`, "km", "≥ 1.5 km", 40 + distancia * 18),
+        metric("actividad", "Nivel de actividad", `${actividad.toFixed(0)}`, "%", "≥ 60 %", actividad * 1.1),
+      ];
+    },
+  },
   futbol: {
     positions: ["Delantero", "Mediocampista", "Defensa", "Portero"],
     heatmapDims: { cols: 12, rows: 8 },
