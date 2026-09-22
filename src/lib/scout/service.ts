@@ -126,7 +126,9 @@ export async function getScoutStatus(video: VideoRow): Promise<ScoutStatus> {
 }
 
 async function ensureDemoScout(video: VideoRow): Promise<void> {
-  if (!isDemoVideo(video)) return;
+  // Demos y, cuando el pipeline de visión no corre en local, videos subidos listos:
+  // generamos seguimiento sintético por deporte para que quede interactivo de inmediato.
+  if (!isDemoVideo(video) && RUN_LOCAL) return;
   const row = await getScoutAnalysis(video.id);
   if (row?.status === "running" || row?.status === "error") return;
   if (row?.status === "ready" && row.tracksJson) {

@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Activity, Crosshair } from "lucide-react";
-import { AnalysisDetail } from "@/components/analysis/AnalysisDetail";
-import { getAnalysisForVideo, getVideoById } from "@/lib/repo";
+import { Activity, BarChart3, Crosshair } from "lucide-react";
+import { getVideoById } from "@/lib/repo";
 import { getSessionUser } from "@/lib/session";
 import { PLAYER_LABEL, formatShortDate } from "@/lib/format";
+import { VideoInsights } from "@/components/app/VideoInsights";
+import { SaveAnalysisPrompt } from "@/components/app/SaveAnalysisPrompt";
 
 interface DetailPageProps {
   params: Promise<{ id: string }>;
@@ -22,49 +23,68 @@ export default async function VideoDetailPage({ params }: DetailPageProps) {
     notFound();
   }
 
-  const analysis = await getAnalysisForVideo(video.id);
+  const videoUrl =
+    video.sourceType === "youtube"
+      ? ""
+      : video.sourceRef
+        ? `/api/media/${encodeURIComponent(video.sourceRef)}`
+        : "";
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      {/* Save prompt for auto-generated videos */}
+      <SaveAnalysisPrompt
+        videoId={video.id}
+        initialTitle={video.title}
+        initialSport={video.sport}
+      />
+
+      {/* Header */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="label mb-2 text-muted">Análisis de video</p>
           <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{video.title}</h1>
-          <p className="mt-2 text-sm text-muted">
+          <p className="mt-1.5 text-sm text-muted">
             {PLAYER_LABEL[video.sport]} · {formatShortDate(video.createdAt)}
-            {analysis ? ` · Procesado el ${formatShortDate(analysis.generatedAt)}` : ""}
           </p>
         </div>
-        {((video.sourceType === "upload" || video.sourceType === "camera") && video.sourceRef) ||
-        (video.sourceType === "youtube" && video.title?.startsWith("Ejemplo —")) ? (
-          <Link
-            href={`/app/videos/${video.id}/escout`}
-            className="inline-flex items-center gap-2 border border-ink/20 px-4 py-2 text-[13px] font-medium text-ink transition-colors hover:border-ink hover:bg-surface"
-          >
-            <Crosshair size={15} strokeWidth={1.8} aria-hidden="true" />
-            <span className="hidden sm:inline">Seguimiento de jugadores</span>
-            <span className="sm:hidden">Seguimiento</span>
-          </Link>
-        ) : null}
-        {((video.sourceType === "upload" || video.sourceType === "camera") && video.sourceRef) ||
-        (video.sourceType === "youtube" && video.title?.startsWith("Ejemplo —")) ? (
-          <Link
-            href={`/app/videos/${video.id}/execution`}
-            className="inline-flex items-center gap-2 border border-ink/20 px-4 py-2 text-[13px] font-medium text-ink transition-colors hover:border-ink hover:bg-surface"
-          >
-            <Activity size={15} strokeWidth={1.8} aria-hidden="true" />
-            <span className="hidden sm:inline">Ejecución de ejercicio</span>
-            <span className="sm:hidden">Ejecución</span>
-          </Link>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {video.sourceRef && video.sourceType !== "youtube" && (
+            <>
+              <Link
+                href={`/app/videos/${video.id}/escout`}
+                className="inline-flex items-center gap-1.5 border border-ink/20 px-3 py-1.5 text-[12px] font-medium text-ink transition-colors hover:border-ink hover:bg-surface"
+              >
+                <Crosshair size={13} /> Seguimiento
+              </Link>
+              <Link
+                href={`/app/videos/${video.id}/execution`}
+                className="inline-flex items-center gap-1.5 border border-ink/20 px-3 py-1.5 text-[12px] font-medium text-ink transition-colors hover:border-ink hover:bg-surface"
+              >
+                <Activity size={13} /> Ejecución
+              </Link>
+              <Link
+                href={`/app/videos/${video.id}/sports`}
+                className="inline-flex items-center gap-1.5 border border-ink/20 px-3 py-1.5 text-[12px] font-medium text-ink transition-colors hover:border-ink hover:bg-surface"
+              >
+                <BarChart3 size={13} /> Deportivo
+              </Link>
+            </>
+          )}
+        </div>
       </header>
 
-      {analysis ? (
-        <AnalysisDetail video={video} analysis={analysis} />
+      {/* Unified analysis view */}
+      {videoUrl ? (
+        <VideoInsights
+          videoId={video.id}
+          videoTitle={video.title}
+          videoUrl={videoUrl}
+          sport={video.sport}
+        />
       ) : (
         <div className="border border-hairline bg-surface px-6 py-10 text-center">
           <p className="text-sm text-muted">
-            Este video aún no fue analizado. Inicie el análisis desde el listado de videos.
+            Video de YouTube — el análisis deportivo requiere un archivo de video local.
           </p>
         </div>
       )}

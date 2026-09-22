@@ -7,11 +7,9 @@ export default function NewAnalysisPage() {
   return (
     <div className="space-y-8">
       <header>
-        <p className="label mb-2 text-muted">Panel de análisis</p>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Nuevo análisis</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Analizá tu video</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-          Registre el material a analizar: grabación desde su cámara, archivo subido o video detectado en YouTube.
-          El resultado se organiza en indicadores, OKRs y momentos destacados.
+          Subí un video, pegá un link de YouTube o grabá con la cámara. El análisis se ejecuta automáticamente y podés ver los resultados al instante.
         </p>
       </header>
       <NewAnalysisForm />

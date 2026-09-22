@@ -94,6 +94,7 @@ export async function runAnalysis(videoId: string, userId: string): Promise<Vide
   try {
     await saveAnalysis(video.id, result, new Date().toISOString());
     await updateVideoStatus(video.id, "ready");
+    await generateDemoScout(video.id, video.sport, (video.players ?? []).length);
   } catch (error) {
     const message = error instanceof ApiServiceError ? error.message : "El análisis no pudo completarse.";
     await updateVideoStatus(video.id, "error", message);
