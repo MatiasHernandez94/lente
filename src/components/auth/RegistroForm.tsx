@@ -13,7 +13,14 @@ export function RegistroForm() {
   return (
     <form action={action} className="space-y-5" noValidate>
       {state?.message && !state.errors ? (
-        <p role="alert" className="border border-red-900/30 bg-red-50 px-3.5 py-2.5 text-sm text-red-900">
+        <p
+          role="alert"
+          className={
+            state.success
+              ? "border border-green-200 bg-green-50 px-3.5 py-2.5 text-sm text-green-800"
+              : "border border-red-900/30 bg-red-50 px-3.5 py-2.5 text-sm text-red-900"
+          }
+        >
           {state.message}
         </p>
       ) : null}

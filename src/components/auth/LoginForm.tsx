@@ -37,6 +37,11 @@ export function LoginForm() {
         />
         {state?.errors?.password ? <p className="mt-1.5 text-xs text-red-900">{state.errors.password[0]}</p> : null}
       </Field>
+      <div className="flex items-center justify-end">
+        <Link href="/forgot-password" className="text-xs text-muted hover:text-ink underline underline-offset-4">
+          ¿Olvidaste tu contraseña?
+        </Link>
+      </div>
       {state?.errors?.form ? <p role="alert" className="text-sm text-red-900">{state.errors.form[0]}</p> : null}
       <Button type="submit" size="lg" className="w-full" disabled={pending}>
         {pending ? (

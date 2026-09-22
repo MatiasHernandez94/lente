@@ -50,57 +50,42 @@ const parseVideo = (row: VideoColumnRow): VideoRow => ({
 const VIDEO_COLUMNS =
   "id, user_id, title, sport, source_type, source_ref, duration_seconds, players, status, error_message, created_at, updated_at";
 
-export async function createUser(input: {
-  id: string;
-  name: string;
-  email: string;
-  passwordHash: string;
-  createdAt: string;
-}): Promise<void> {
-  const { error } = await getClient()
-    .from("users")
-    .insert({
-      id: input.id,
-      name: input.name,
-      email: input.email,
-      password_hash: input.passwordHash,
-      created_at: input.createdAt,
-    });
-  if (error) postError("createUser", error);
-}
-
-export async function findUserByEmail(email: string): Promise<UserRow | null> {
-  const { data, error } = await getClient()
-    .from("users")
-    .select("id, name, email, password_hash, created_at")
-    .eq("email", email)
-    .maybeSingle();
-  if (error) postError("findUserByEmail", error);
-  if (!data) return null;
+function parseUser(data: { id: string; name: string; email: string; created_at: string }): UserRow {
   return {
     id: data.id,
     name: data.name,
     email: data.email,
-    passwordHash: data.password_hash,
     createdAt: data.created_at,
   };
+}
+
+export async function ensureUserProfile(input: {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: string;
+}): Promise<void> {
+  const existing = await getUserById(input.id);
+  if (existing) return;
+
+  const { error } = await getClient().from("users").insert({
+    id: input.id,
+    name: input.name,
+    email: input.email,
+    created_at: input.createdAt,
+  });
+  if (error && error.code !== "23505") postError("ensureUserProfile", error);
 }
 
 export async function getUserById(id: string): Promise<UserRow | null> {
   const { data, error } = await getClient()
     .from("users")
-    .select("id, name, email, password_hash, created_at")
+    .select("id, name, email, created_at")
     .eq("id", id)
     .maybeSingle();
   if (error) postError("getUserById", error);
   if (!data) return null;
-  return {
-    id: data.id,
-    name: data.name,
-    email: data.email,
-    passwordHash: data.password_hash,
-    createdAt: data.created_at,
-  };
+  return parseUser(data);
 }
 
 export async function createVideo(input: {
@@ -154,6 +139,17 @@ export async function getVideoById(id: string): Promise<VideoRow | null> {
   if (error) postError("getVideoById", error);
   if (!data) return null;
   return parseVideo(data as VideoColumnRow);
+}
+
+export async function updateVideo(
+  id: string,
+  fields: { title?: string; sport?: string },
+): Promise<void> {
+  const update: Record<string, string> = { updated_at: new Date().toISOString() };
+  if (fields.title !== undefined) update.title = fields.title;
+  if (fields.sport !== undefined) update.sport = fields.sport;
+  const { error } = await getClient().from("videos").update(update).eq("id", id);
+  if (error) postError("updateVideo", error);
 }
 
 export async function updateVideoStatus(
