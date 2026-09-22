@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListVideo, Target, Plus, LogOut } from "lucide-react";
+import { LayoutDashboard, ListVideo, Target, Plus, Radio, LogOut } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { logout } from "@/app/actions/auth";
 
@@ -46,6 +46,13 @@ export function AppShell({ userName, children }: AppShellProps) {
           </nav>
 
           <div className="flex items-center gap-3">
+            <Link
+              href="/app/live"
+              className="inline-flex items-center gap-2 border border-ink/20 px-4 py-2 text-[13px] font-medium text-ink transition-colors hover:bg-surface"
+            >
+              <Radio size={15} strokeWidth={2} aria-hidden="true" />
+              <span className="hidden sm:inline">En vivo</span>
+            </Link>
             <Link
               href="/app/nuevo"
               className="inline-flex items-center gap-2 bg-ink px-4 py-2 text-[13px] font-medium text-canvas transition-colors hover:bg-muted"
