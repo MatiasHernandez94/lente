@@ -1,6 +1,6 @@
 import "server-only";
 import { getClient } from "./db";
-import type { AnalysisRecord, AnalysisRow, ExecutionRow, ScoutRow, UserRow, VideoRow } from "./schema";
+import type { AnalysisRecord, AnalysisRow, ExecutionRow, PendienteRow, ScoutRow, UserRow, VideoRow } from "./schema";
 import type { AnalysisResult, SourceType, Sport, VideoStatus } from "./analysis/types";
 import type { ScoutCalibration, ScoutResultData, ScoutAssignment } from "./scout/types";
 import type { ExecutionResult } from "./execution/types";
@@ -426,4 +426,59 @@ export async function saveExecutionExercise(videoId: string, exerciseId: string)
     .update({ exercise_id: exerciseId, updated_at: new Date().toISOString() })
     .eq("video_id", videoId);
   if (error) postError("saveExecutionExercise", error);
+}
+
+const PENDIENTE_COLUMNS = "id, user_id, source_text, content, created_at";
+
+type PendienteColumnRow = {
+  id: string;
+  user_id: string;
+  source_text: string;
+  content: string;
+  created_at: string;
+};
+
+const parsePendiente = (row: PendienteColumnRow): PendienteRow => ({
+  id: row.id,
+  userId: row.user_id,
+  sourceText: row.source_text,
+  content: row.content,
+  createdAt: row.created_at,
+});
+
+export async function createPendiente(input: {
+  id: string;
+  userId: string;
+  sourceText: string;
+  content: string;
+  createdAt: string;
+}): Promise<PendienteRow> {
+  const { data, error } = await getClient()
+    .from("pendientes")
+    .insert({
+      id: input.id,
+      user_id: input.userId,
+      source_text: input.sourceText,
+      content: input.content,
+      created_at: input.createdAt,
+    })
+    .select(PENDIENTE_COLUMNS)
+    .single();
+  if (error) postError("createPendiente", error);
+  return parsePendiente(data as PendienteColumnRow);
+}
+
+export async function listPendientesByUser(userId: string): Promise<PendienteRow[]> {
+  const { data, error } = await getClient()
+    .from("pendientes")
+    .select(PENDIENTE_COLUMNS)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) postError("listPendientesByUser", error);
+  return (data as PendienteColumnRow[]).map(parsePendiente);
+}
+
+export async function deletePendiente(id: string): Promise<void> {
+  const { error } = await getClient().from("pendientes").delete().eq("id", id);
+  if (error) postError("deletePendiente", error);
 }

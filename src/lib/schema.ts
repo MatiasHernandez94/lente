@@ -51,6 +51,14 @@ export interface ScoutRow {
   updatedAt: string;
 }
 
+export interface PendienteRow {
+  id: string;
+  userId: string;
+  sourceText: string;
+  content: string;
+  createdAt: string;
+}
+
 export interface ExecutionRow {
   videoId: string;
   status: string;
