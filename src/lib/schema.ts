@@ -1,10 +1,19 @@
 import type { AnalysisResult, SourceType, Sport, VideoStatus } from "./analysis/types";
 
+export type UserRol = "alumno" | "profesor";
+
 export interface UserRow {
   id: string;
   name: string;
   email: string;
   createdAt: string;
+  pesoKg: number | null;
+  alturaCm: number | null;
+  rol: UserRol;
+  deporteDocente: string | null;
+  tutorEmail: string | null;
+  termsAccepted: boolean;
+  termsAcceptedAt: string | null;
 }
 
 export interface VideoRow {

@@ -35,5 +35,12 @@ export async function getSessionUser(): Promise<UserRow | null> {
     name,
     email: user.email,
     createdAt: user.created_at,
+    pesoKg: null,
+    alturaCm: null,
+    rol: "alumno",
+    deporteDocente: null,
+    tutorEmail: null,
+    termsAccepted: false,
+    termsAcceptedAt: null,
   };
 }

@@ -50,14 +50,36 @@ const parseVideo = (row: VideoColumnRow): VideoRow => ({
 const VIDEO_COLUMNS =
   "id, user_id, title, sport, source_type, source_ref, duration_seconds, players, status, error_message, created_at, updated_at";
 
-function parseUser(data: { id: string; name: string; email: string; created_at: string }): UserRow {
+function parseUser(data: {
+  id: string;
+  name: string;
+  email: string;
+  created_at: string;
+  peso_kg: number | null;
+  altura_cm: number | null;
+  rol: string;
+  deporte_docente: string | null;
+  tutor_email: string | null;
+  terms_accepted: boolean;
+  terms_accepted_at: string | null;
+}): UserRow {
   return {
     id: data.id,
     name: data.name,
     email: data.email,
     createdAt: data.created_at,
+    pesoKg: data.peso_kg,
+    alturaCm: data.altura_cm,
+    rol: data.rol === "profesor" ? "profesor" : "alumno",
+    deporteDocente: data.deporte_docente,
+    tutorEmail: data.tutor_email,
+    termsAccepted: data.terms_accepted,
+    termsAcceptedAt: data.terms_accepted_at,
   };
 }
+
+const USER_COLUMNS =
+  "id, name, email, created_at, peso_kg, altura_cm, rol, deporte_docente, tutor_email, terms_accepted, terms_accepted_at";
 
 export async function ensureUserProfile(input: {
   id: string;
@@ -80,12 +102,12 @@ export async function ensureUserProfile(input: {
 export async function getUserById(id: string): Promise<UserRow | null> {
   const { data, error } = await getClient()
     .from("users")
-    .select("id, name, email, created_at")
+    .select(USER_COLUMNS)
     .eq("id", id)
     .maybeSingle();
   if (error) postError("getUserById", error);
   if (!data) return null;
-  return parseUser(data);
+  return parseUser(data as unknown as Parameters<typeof parseUser>[0]);
 }
 
 export async function createVideo(input: {

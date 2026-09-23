@@ -4,8 +4,15 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ensureUserProfile } from "@/lib/repo";
-import { loginSchema, registerSchema, forgotPasswordSchema, resetPasswordSchema } from "@/lib/validation";
+import {
+  loginSchema,
+  registerSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+} from "@/lib/validation";
+import { ensureDeporte, linkTutor, setUserDeportes, updateProfile } from "@/lib/profile/service";
 import { assertNotRateLimited } from "@/lib/rateLimit";
+import type { UserRol } from "@/lib/schema";
 
 export interface AuthFormState {
   errors?: {
@@ -13,6 +20,13 @@ export interface AuthFormState {
     email?: string[];
     password?: string[];
     token?: string[];
+    pesoKg?: string[];
+    alturaCm?: string[];
+    rol?: string[];
+    deporteDocente?: string[];
+    deportes?: string[];
+    tutorEmail?: string[];
+    termsAccepted?: string[];
     form?: string;
   };
   message?: string;
@@ -47,19 +61,26 @@ export async function register(_prevState: AuthFormState | undefined, formData: 
     name: formData.get("name"),
     email: formData.get("email"),
     password: formData.get("password"),
+    pesoKg: formData.get("pesoKg"),
+    alturaCm: formData.get("alturaCm"),
+    rol: (formData.get("rol") as UserRol) ?? "alumno",
+    deporteDocente: formData.get("deporteDocente"),
+    deportes: formData.getAll("deportes"),
+    tutorEmail: formData.get("tutorEmail"),
+    termsAccepted: formData.get("termsAccepted") === "on",
   });
 
   if (!parsed.success) {
     return { errors: parsed.error.flatten().fieldErrors, message: "Revise los campos indicados." };
   }
 
-  const { name, email, password } = parsed.data;
+  const { name, email, password, pesoKg, alturaCm, rol, deporteDocente, deportes, tutorEmail } = parsed.data;
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      data: { name },
+      data: { name, rol, deportes },
       emailRedirectTo: `${appUrl()}/auth/callback`,
     },
   });
@@ -69,12 +90,35 @@ export async function register(_prevState: AuthFormState | undefined, formData: 
   }
 
   if (data.user?.email) {
+    const userId = data.user.id;
     await ensureUserProfile({
-      id: data.user.id,
+      id: userId,
       name,
       email: data.user.email,
       createdAt: data.user.created_at,
     });
+
+    const deporteIds: string[] = [];
+    for (const raw of deportes) {
+      const deporte = raw.trim();
+      if (!deporte) continue;
+      const known = await ensureDeporte(deporte);
+      deporteIds.push(known.id);
+    }
+    await setUserDeportes(userId, deporteIds);
+
+    await updateProfile(userId, {
+      pesoKg: pesoKg ?? null,
+      alturaCm: alturaCm ?? null,
+      rol,
+      deporteDocente: rol === "profesor" ? (deporteDocente ?? null) : null,
+      tutorEmail: rol === "alumno" && tutorEmail ? tutorEmail : null,
+      termsAccepted: true,
+    });
+
+    if (rol === "alumno" && tutorEmail) {
+      await linkTutor(userId, tutorEmail);
+    }
   }
 
   if (!data.session) {

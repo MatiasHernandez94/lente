@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListVideo, Target, Plus, Radio, LogOut } from "lucide-react";
+import { LayoutDashboard, ListVideo, Target, Plus, Radio, LogOut, User } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { logout } from "@/app/actions/auth";
 
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { href: "/app", label: "Resumen", icon: LayoutDashboard },
   { href: "/app/videos", label: "Videos", icon: ListVideo },
   { href: "/app/okrs", label: "OKRs", icon: Target },
+  { href: "/app/perfil", label: "Perfil", icon: User },
 ];
 
 export function AppShell({ userName, children }: AppShellProps) {
