@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, ShieldCheck } from "lucide-react";
 import { login } from "@/app/actions/auth";
+import { enterDemoAdmin } from "@/app/actions/admin";
 import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
 
-export function LoginForm() {
+export function LoginForm({ demoAdmin = false }: { demoAdmin?: boolean }) {
   const [state, action, pending] = useActionState(login, undefined);
+  const [demoState, demoAction, demoPending] = useActionState(enterDemoAdmin, undefined);
 
   return (
     <form action={action} className="space-y-5" noValidate>
@@ -58,6 +60,49 @@ export function LoginForm() {
           Regístrese
         </Link>
       </p>
+      {demoAdmin ? (
+        <div className="space-y-2 border-t border-hairline pt-4">
+          <form action={demoAction} className="grid grid-cols-2 gap-2" noValidate>
+            {demoState?.message && !demoState.success ? (
+              <p role="alert" className="col-span-2 border border-red-900/30 bg-red-50 px-3 py-2 text-xs text-red-900">
+                {demoState.message}
+              </p>
+            ) : null}
+            <input type="hidden" name="rol" value="profesor" />
+            <Button
+              type="submit"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              disabled={demoPending}
+              title="Entrar como administrador de demostración sin contraseña"
+            >
+              {demoPending ? (
+                <LoaderCircle size={13} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <ShieldCheck size={13} aria-hidden="true" />
+              )}
+              Admin · Profesor
+            </Button>
+            <input type="hidden" name="rol" value="alumno" />
+            <Button
+              type="submit"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              disabled={demoPending}
+              title="Entrar como administrador de demostración (perfil alumno) sin contraseña"
+            >
+              {demoPending ? (
+                <LoaderCircle size={13} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <ShieldCheck size={13} aria-hidden="true" />
+              )}
+              Admin · Alumno
+            </Button>
+          </form>
+        </div>
+      ) : null}
     </form>
   );
 }

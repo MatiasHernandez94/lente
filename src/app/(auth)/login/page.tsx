@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LoginForm } from "@/components/auth/LoginForm";
+import { isDemoAdminEnabled } from "@/lib/admin/demo";
 
 export const metadata: Metadata = { title: "Iniciar sesión" };
 
@@ -21,7 +22,7 @@ export default async function LoginPage({ searchParams }: Props) {
           Tu contraseña fue restablecida correctamente. Ahora podés iniciar sesión.
         </p>
       ) : null}
-      <LoginForm />
+      <LoginForm demoAdmin={isDemoAdminEnabled()} />
     </section>
   );
 }
