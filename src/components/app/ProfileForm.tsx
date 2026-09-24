@@ -5,6 +5,7 @@ import { LoaderCircle } from "lucide-react";
 import { updateProfileAction } from "@/app/actions/profile";
 import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
+import { useScrollToError } from "@/lib/hooks/useScrollToError";
 import type { Deporte } from "@/lib/profile/types";
 import type { UserRol } from "@/lib/schema";
 
@@ -18,6 +19,8 @@ export function ProfileForm({ deportes, defaultDeportes, rol = "alumno" }: Profi
   const [state, action, pending] = useActionState(updateProfileAction, undefined);
   const [selected, setSelected] = useState<string[]>(defaultDeportes);
   const [customSport, setCustomSport] = useState("");
+
+  useScrollToError(Boolean(state?.errors));
 
   const destacados = deportes.filter((d) => d.destacado);
   const otros = deportes.filter((d) => !d.destacado);

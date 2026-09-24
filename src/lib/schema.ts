@@ -81,3 +81,18 @@ export interface ExecutionRow {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface CorreccionRow {
+  id: string;
+  videoId: string;
+  profesorId: string;
+  alumnoId: string;
+  mensaje: string;
+  minutoInicio: number | null;
+  minutoFin: number | null;
+  createdAt: string;
+}
+
+export interface CorreccionConProfesor extends CorreccionRow {
+  profesorName: string;
+}

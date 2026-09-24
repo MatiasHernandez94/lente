@@ -6,6 +6,7 @@ import { LoaderCircle } from "lucide-react";
 import { register } from "@/app/actions/auth";
 import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
+import { useScrollToError } from "@/lib/hooks/useScrollToError";
 import type { Deporte } from "@/lib/profile/types";
 import type { UserRol } from "@/lib/schema";
 
@@ -14,6 +15,8 @@ export function RegistroForm({ deportes }: { deportes: Deporte[] }) {
   const [rol, setRol] = useState<UserRol>("alumno");
   const [selected, setSelected] = useState<string[]>([]);
   const [customSport, setCustomSport] = useState("");
+
+  useScrollToError(Boolean(state?.errors));
 
   const destacados = deportes.filter((d) => d.destacado);
   const otros = deportes.filter((d) => !d.destacado);
@@ -161,7 +164,7 @@ export function RegistroForm({ deportes }: { deportes: Deporte[] }) {
           ) : null}
         </Field>
       ) : (
-        <Field label="Profesor/a tutor (opcional)" hint="Correo de quien te entrena o dirige.">
+        <Field label="Profesor/a tutor (opcional)" hint="Correo de quien te entrena o dirige. Se vinculará si hay un perfil de profesor con ese correo.">
           <TextInput
             name="tutorEmail"
             type="email"

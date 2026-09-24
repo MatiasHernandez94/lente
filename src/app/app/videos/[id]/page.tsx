@@ -4,9 +4,11 @@ import { notFound } from "next/navigation";
 import { Activity, BarChart3, Crosshair } from "lucide-react";
 import { getVideoById } from "@/lib/repo";
 import { getSessionUser } from "@/lib/session";
+import { listCorreccionesByVideo } from "@/lib/correccion/service";
 import { PLAYER_LABEL, formatShortDate } from "@/lib/format";
 import { VideoInsights } from "@/components/app/VideoInsights";
 import { SaveAnalysisPrompt } from "@/components/app/SaveAnalysisPrompt";
+import { CorreccionesList } from "@/components/app/CorreccionesList";
 
 interface DetailPageProps {
   params: Promise<{ id: string }>;
@@ -22,6 +24,9 @@ export default async function VideoDetailPage({ params }: DetailPageProps) {
   if (!video || user === null || video.userId !== user.id) {
     notFound();
   }
+
+  const correcciones = await listCorreccionesByVideo(id);
+  const shareUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/app/videos/${video.id}`;
 
   const videoUrl =
     video.sourceType === "youtube"
@@ -88,6 +93,16 @@ export default async function VideoDetailPage({ params }: DetailPageProps) {
           </p>
         </div>
       )}
+
+      {correcciones.length > 0 ? (
+        <section>
+          <h2 className="mb-4 text-base font-medium text-ink">
+            Correcciones de {correcciones[0].profesorName}
+            {correcciones.length > 1 ? ` y ${correcciones.length - 1} más` : ""}
+          </h2>
+          <CorreccionesList correcciones={correcciones} shareUrl={shareUrl} />
+        </section>
+      ) : null}
     </div>
   );
 }

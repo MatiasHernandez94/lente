@@ -172,6 +172,33 @@ export async function listAlumnos(profesorId: string): Promise<{ id: string; nam
   }));
 }
 
+export async function isAlumnoOf(profesorId: string, alumnoId: string): Promise<boolean> {
+  const { data, error } = await getClient()
+    .from("profesor_alumno")
+    .select("alumno_id")
+    .eq("profesor_id", profesorId)
+    .eq("alumno_id", alumnoId)
+    .maybeSingle();
+  if (error) postError("isAlumnoOf", error);
+  return Boolean(data);
+}
+
+export async function listAlumnosConDetalle(
+  profesorId: string,
+): Promise<Array<{ id: string; name: string; email: string; videoCount: number }>> {
+  const alumnos = await listAlumnos(profesorId);
+  const results: Array<{ id: string; name: string; email: string; videoCount: number }> = [];
+  for (const alumno of alumnos) {
+    const { count, error } = await getClient()
+      .from("videos")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", alumno.id);
+    if (error) postError("listAlumnosConDetalle", error);
+    results.push({ ...alumno, videoCount: count ?? 0 });
+  }
+  return results;
+}
+
 export async function updateProfile(userId: string, input: ProfileInput): Promise<void> {
   const update: Record<string, unknown> = {};
   if (input.pesoKg !== undefined) update.peso_kg = input.pesoKg;

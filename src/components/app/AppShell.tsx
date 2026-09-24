@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListVideo, Target, Plus, Radio, LogOut, User } from "lucide-react";
+import { LayoutDashboard, ListVideo, Target, Plus, Radio, LogOut, User, GraduationCap } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { logout } from "@/app/actions/auth";
+import type { UserRol } from "@/lib/schema";
 
 interface AppShellProps {
   userName: string;
+  userRol: UserRol;
   children: React.ReactNode;
 }
 
@@ -18,8 +20,11 @@ const NAV_ITEMS = [
   { href: "/app/perfil", label: "Perfil", icon: User },
 ];
 
-export function AppShell({ userName, children }: AppShellProps) {
+const PROFESOR_NAV_ITEM = { href: "/app/profesor", label: "Alumnos", icon: GraduationCap };
+
+export function AppShell({ userName, userRol, children }: AppShellProps) {
   const pathname = usePathname();
+  const navItems = userRol === "profesor" ? [...NAV_ITEMS.slice(0, 1), PROFESOR_NAV_ITEM, ...NAV_ITEMS.slice(1)] : NAV_ITEMS;
 
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
@@ -28,7 +33,7 @@ export function AppShell({ userName, children }: AppShellProps) {
           <Logo href="/app" className="shrink-0" />
 
           <nav className="hidden items-center gap-1 md:flex" aria-label="Navegación principal">
-            {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+            {navItems.map(({ href, label, icon: Icon }) => {
               const active = href === "/app" ? pathname === "/app" : pathname.startsWith(href);
               return (
                 <Link
@@ -82,7 +87,7 @@ export function AppShell({ userName, children }: AppShellProps) {
         </div>
 
         <nav className="flex items-center border-t border-hairline px-2 md:hidden" aria-label="Navegación móvil">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+          {navItems.map(({ href, label, icon: Icon }) => {
             const active = href === "/app" ? pathname === "/app" : pathname.startsWith(href);
             return (
               <Link

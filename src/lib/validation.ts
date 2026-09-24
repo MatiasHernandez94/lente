@@ -117,3 +117,24 @@ export const ytUrlSchema = z
   .max(500)
   .trim()
   .regex(/^https?:\/\/(www\.)?youtu(\.be|be\.com)\//, "Ingrese una URL de YouTube válida.");
+
+export const correccionSchema = z
+  .object({
+    mensaje: z
+      .string()
+      .trim()
+      .min(3, "La corrección debe tener al menos 3 caracteres.")
+      .max(2000, "La corrección es demasiado larga."),
+    minutoInicio: z.preprocess(
+      (value) => (value === "" || value === null || value === undefined ? undefined : Number(value)),
+      z.number({ message: "Minuto inválido." }).int().min(0, "El minuto no puede ser negativo.").max(720).optional(),
+    ),
+    minutoFin: z.preprocess(
+      (value) => (value === "" || value === null || value === undefined ? undefined : Number(value)),
+      z.number({ message: "Minuto inválido." }).int().min(0, "El minuto no puede ser negativo.").max(720).optional(),
+    ),
+  })
+  .refine((data) => data.minutoInicio === undefined || data.minutoFin === undefined || data.minutoFin >= data.minutoInicio, {
+    path: ["minutoFin"],
+    message: "El minuto de fin debe ser mayor o igual al de inicio.",
+  });
