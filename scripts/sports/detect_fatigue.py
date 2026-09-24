@@ -117,7 +117,7 @@ def detect_fatigue_patterns(speeds, timestamps, window_pct=0.2):
 
     fatigue_score = min(100, fatigue_score)
 
-    fatigue_detected = fatigue_score > 30
+    fatigue_detected = bool(fatigue_score > 30)
 
     return {
         "fatigue_detected": fatigue_detected,
@@ -197,7 +197,7 @@ def analyze_session(phases, total_duration_s):
         "total_duration_s": round(total_duration_s, 1),
         "work_time_s": round(work_time, 1),
         "rest_time_s": round(rest_time, 1),
-        "work_rest_ratio": round(work_time / rest_time, 2) if rest_time > 0 else float("inf"),
+        "work_rest_ratio": round(work_time / rest_time, 2) if rest_time > 0 else None,
     }
 
 

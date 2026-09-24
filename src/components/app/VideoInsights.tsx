@@ -327,7 +327,7 @@ function VideoHero({
       <video
         src={videoUrl}
         controls
-        className="w-full"
+        className="h-auto max-h-[72vh] w-full object-contain"
         crossOrigin="anonymous"
         onLoadedMetadata={(event) => {
           if (!seekAttempted && initialSeconds !== undefined && initialSeconds > 0) {

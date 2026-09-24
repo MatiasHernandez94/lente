@@ -56,4 +56,5 @@ next-env.d.ts
 __pycache__/
 *.pyc
 scripts/sports/*.pt
+/*.pt
 .python */

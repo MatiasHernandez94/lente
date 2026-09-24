@@ -35,14 +35,19 @@ def run_full_analysis(video_path, output_path=None, sample_fps=5, sport="general
     tracking_path = str(Path(video_path).with_suffix(".tracking.json"))
     tracking_data = process_video(video_path, tracking_path, sample_fps)
 
-    # Count detected people
+    # Count detected people and max concurrent per frame
     detected_ids = set()
+    max_concurrent = 0
     for fd in tracking_data.get("frames", []):
-        for p in fd.get("players", []):
+        players = fd.get("players", [])
+        for p in players:
             detected_ids.add(p["id"])
+        max_concurrent = max(max_concurrent, len(players))
     person_count = len(detected_ids)
 
-    is_solo = sport in SOLO_SPORTS or person_count <= 1
+    # Decide mode by actual detected people, not by the sport label.
+    # A video with 2+ people simultaneously present is team activity.
+    is_solo = max_concurrent <= 1 and person_count <= 1
 
     if is_solo:
         print(f"\n[Solo mode] {person_count} person detected → individual activity analysis")
@@ -111,7 +116,13 @@ def run_full_analysis(video_path, output_path=None, sample_fps=5, sport="general
         output_path = str(Path(video_path).with_suffix(".analysis.json"))
 
     with open(output_path, "w") as f:
-        json.dump(output, f, separators=(',', ':'))
+
+        def sanitize(obj):
+            if isinstance(obj, float) and (obj != obj or obj in (float("inf"), float("-inf"))):
+                return None
+            return obj
+
+        json.dump(output, f, separators=(',', ':'), default=sanitize)
 
     print("\n" + "=" * 60)
     print("Analysis Complete!")

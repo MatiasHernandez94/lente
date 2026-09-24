@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { GraduationCap, ArrowRight } from "lucide-react";
+import { GraduationCap, ArrowRight, Video } from "lucide-react";
 import { getSessionUser } from "@/lib/session";
 import { listAlumnosConDetalle } from "@/lib/profile/service";
 import { listNotificaciones, markNotificacionesRead } from "@/lib/notificacion/service";
+import { VincularAlumnoButton } from "@/components/app/VincularAlumno";
 
 export const metadata: Metadata = { title: "Mis alumnos" };
 
@@ -23,9 +24,7 @@ export default async function ProfesorPage() {
     <div className="space-y-10">
       <header>
         <p className="label mb-2 text-muted">Panel del profesor</p>
-        <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-          {user.deporteDocente ? `Mis ${user.deporteDocente}` : "Mis alumnos"}
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">Mis alumnos</h1>
         <p className="mt-2 text-sm text-muted">
           Revisa los análisis que te comparten tus alumnas y alumnos, y deja correcciones con un toque.
         </p>
@@ -50,14 +49,23 @@ export default async function ProfesorPage() {
           <GraduationCap size={32} strokeWidth={1.5} className="mx-auto text-muted" aria-hidden="true" />
           <h2 className="mt-4 text-lg font-medium text-ink">Aún no tienes alumnas/os vinculados</h2>
           <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted">
-            Tus alumnas y alumnos te vinculan escribiendo tu correo en su perfil. Cuando lo hagan, sus videos
-            aparecerán aquí para que los corrijas.
+            Vinculá a tus alumnas/os para corregir sus videos. Si no tienen cuenta todavía, alcanza con el nombre.
           </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <VincularAlumnoButton />
+            <Link
+              href="/app/nuevo"
+              className="inline-flex items-center gap-2 border border-ink/20 px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:border-ink hover:bg-surface"
+            >
+              <Video size={15} strokeWidth={2} aria-hidden="true" /> Subir video de análisis
+            </Link>
+          </div>
         </section>
       ) : (
         <section>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-base font-medium text-ink">Alumnas/os vinculados</h2>
+            <VincularAlumnoButton />
           </div>
           <div className="grid gap-px border border-hairline bg-hairline sm:grid-cols-2 lg:grid-cols-3">
             {alumnos.map((alumno) => (
