@@ -1,13 +1,13 @@
 import "server-only";
 import { execFile, spawn, ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import type { VideoRow } from "@/lib/schema";
-import { getVideoById } from "@/lib/repo";
 import { ApiServiceError } from "@/lib/services/videoService";
+import { downloadVideoFromStorage, readAnalysisFromStorage, saveAnalysisToStorage } from "@/lib/videos/storage";
 
 const execFileAsync = promisify(execFile);
 const SCRIPTS_DIR = join(process.cwd(), "scripts", "sports");
@@ -18,7 +18,7 @@ const RESULTS_DIR = join(process.cwd(), "data", "sports-analysis");
 const USE_WORKER = process.env.LENTE_SPORTS_WORKER === "1";
 let workerProcess: ChildProcess | null = null;
 let workerReady = false;
-let pendingRequests = new Map<string, {
+const pendingRequests = new Map<string, {
   resolve: (value: unknown) => void;
   reject: (reason?: unknown) => void;
 }>();
@@ -153,20 +153,28 @@ export interface SportAnalysisResult {
   timestamp: string;
 }
 
-function resolveVideoPath(video: VideoRow): string {
+async function resolveVideoPath(video: VideoRow): Promise<string> {
   if (video.sourceType === "youtube") {
     throw new ApiServiceError(400, "El análisis completo aún no está disponible para videos de YouTube.");
   }
-  const filePath = join(UPLOADS_DIR, video.sourceRef as string);
-  if (!existsSync(filePath)) {
+  const sourceRef = video.sourceRef as string;
+  const localPath = join(UPLOADS_DIR, sourceRef);
+  if (existsSync(localPath)) {
+    return localPath;
+  }
+  // El video puede estar solo en Storage (producción): lo bajamos a tmp.
+  const buffer = await downloadVideoFromStorage(sourceRef);
+  if (!buffer) {
     throw new ApiServiceError(404, "El archivo de video no está disponible.");
   }
-  return filePath;
+  mkdirSync(tmpdir(), { recursive: true });
+  const tmpFile = join(tmpdir(), `lente-${randomUUID()}-${sourceRef}`);
+  writeFileSync(tmpFile, buffer);
+  return tmpFile;
 }
 
 function getOutputPath(videoId: string): string {
   if (!existsSync(RESULTS_DIR)) {
-    const { mkdirSync } = require("node:fs");
     mkdirSync(RESULTS_DIR, { recursive: true });
   }
   return join(RESULTS_DIR, `${videoId}.json`);
@@ -255,7 +263,7 @@ export async function startSportAnalysis(
   video: VideoRow,
   options: { sample_fps?: number; sport?: string } = {}
 ): Promise<SportAnalysisResult> {
-  const videoPath = resolveVideoPath(video);
+  const videoPath = await resolveVideoPath(video);
   const outputPath = getOutputPath(video.id);
   const sampleFps = options.sample_fps ?? 5;
   const sport = options.sport ?? video.sport ?? "general";
@@ -278,6 +286,7 @@ export async function startSportAnalysis(
       }, 60 * 60 * 1000);
 
       const data = JSON.parse(readFileSync(outputPath, "utf8"));
+      void saveAnalysisToStorage(`${video.id}.json`, data);
       return data as SportAnalysisResult;
     } catch (error) {
       throw new ApiServiceError(
@@ -309,6 +318,7 @@ export async function startSportAnalysis(
 
     // Read and return results
     const data = JSON.parse(readFileSync(outputPath, "utf8"));
+    void saveAnalysisToStorage(`${video.id}.json`, data);
     return data as SportAnalysisResult;
   } catch (error) {
     if (error instanceof ApiServiceError) throw error;
@@ -323,19 +333,34 @@ export async function getSportAnalysis(
   videoId: string
 ): Promise<SportAnalysisResult | null> {
   const outputPath = getOutputPath(videoId);
-  if (!existsSync(outputPath)) return null;
+  let data: SportAnalysisResult | null = null;
 
-  try {
-    const data = JSON.parse(readFileSync(outputPath, "utf8"));
-    // Ensure frames exist for overlay
-    if (!data.frames || !data.frames.length) {
-      data.frames = generateSyntheticFrames(data);
-      writeFileSync(outputPath, JSON.stringify(data, null, 2));
+  if (existsSync(outputPath)) {
+    try {
+      data = JSON.parse(readFileSync(outputPath, "utf8")) as SportAnalysisResult;
+    } catch {
+      data = null;
     }
-    return data as SportAnalysisResult;
-  } catch {
-    return null;
   }
+
+  if (!data) {
+    // El análisis se generó en otro entorno: lo traemos de Storage.
+    data = await readAnalysisFromStorage<SportAnalysisResult>(`${videoId}.json`);
+  }
+
+  if (!data) return null;
+
+  // Ensure frames exist for overlay
+  if (!data.frames || !data.frames.length) {
+    data.frames = generateSyntheticFrames(data);
+    try {
+      writeFileSync(outputPath, JSON.stringify(data, null, 2));
+    } catch {
+      // ignorar
+    }
+    void saveAnalysisToStorage(`${videoId}.json`, data);
+  }
+  return data;
 }
 
 function generateSyntheticFrames(analysis: SportAnalysisResult): Array<{
@@ -350,7 +375,7 @@ function generateSyntheticFrames(analysis: SportAnalysisResult): Array<{
   }>;
   ball: { center: [number, number] } | null;
 }> {
-  const { width, height, fps, duration_s } = analysis.video;
+  const { width, height, duration_s } = analysis.video;
   const frameInterval = 1.0; // 1 frame per second for overlay
   const totalFrames = Math.floor(duration_s / frameInterval);
   const players = analysis.tracking.players;
@@ -394,7 +419,6 @@ function generateSyntheticFrames(analysis: SportAnalysisResult): Array<{
 
 export async function getPlayerTracking(
   videoId: string,
-  frameRange?: { start: number; end: number }
 ): Promise<SportAnalysisResult["tracking"] | null> {
   const analysis = await getSportAnalysis(videoId);
   if (!analysis) return null;

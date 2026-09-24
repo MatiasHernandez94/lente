@@ -6,6 +6,7 @@ import { Camera, Upload, SquarePlay, Circle, Square, LoaderCircle } from "lucide
 import type { SourceType } from "@/lib/analysis/types";
 import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
+import { uploadVideoFile } from "@/lib/videos/client";
 
 const SOURCES: { value: SourceType; label: string; hint: string; icon: typeof Camera }[] = [
   { value: "upload", label: "Subir archivo", hint: "MP4, WebM o MOV · máx. 250 MB", icon: Upload },
@@ -121,13 +122,8 @@ export function VideoUploadZone() {
     if (!file) {
       throw new Error(isCamera ? "Grabá un segmento antes de continuar." : "Seleccioná un archivo de video.");
     }
-    const formData = new FormData();
-    const fileName = isCamera ? "camara.webm" : uploadedFile?.name ?? "video.webm";
-    formData.append("file", file, fileName);
-    const res = await fetch("/api/upload", { method: "POST", body: formData });
-    const body = (await res.json()) as { file?: string; error?: string };
-    if (!res.ok || !body.file) throw new Error(body.error ?? "La subida no se completó.");
-    return body.file;
+    const uploadFileArg = isCamera ? new File([file], "camara.webm", { type: file.type || "video/webm" }) : uploadedFile!;
+    return uploadVideoFile(uploadFileArg);
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {

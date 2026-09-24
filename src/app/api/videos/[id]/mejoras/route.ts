@@ -64,7 +64,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/videos/[
       throw new ApiServiceError(404, "El video no existe o no le corresponde.");
     }
 
-    const stored = getVideoAIInsight(id);
+    const stored = await getVideoAIInsight(id);
     const improvements = stored?.improvements;
     if (improvements) {
       const body: ImprovementsApiResponse = {

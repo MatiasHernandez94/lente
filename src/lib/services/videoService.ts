@@ -5,6 +5,7 @@ import { join, extname } from "node:path";
 import { generateAnalysis } from "@/lib/analysis/engine";
 import type { AnalysisResult, SourceType, Sport } from "@/lib/analysis/types";
 import { generateDemoScout } from "@/lib/scout/demo";
+import { uploadVideoToStorage } from "@/lib/videos/storage";
 import {
   createVideo as insertVideo,
   getAnalysisForVideo,
@@ -19,6 +20,11 @@ const SIMULATED_PROCESS_MS = 1200;
 
 const DATA_DIR = join(process.cwd(), "data", "uploads");
 const ALLOWED_VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".mkv", ".avi"];
+const MIME_BY_EXTENSION: Record<string, string> = {
+  ".mp4": "video/mp4",
+  ".mov": "video/quicktime",
+  ".webm": "video/webm",
+};
 
 export function persistUpload(buffer: Buffer, originalName: string): string {
   const extension = extname(originalName).toLowerCase();
@@ -35,6 +41,8 @@ export function persistUpload(buffer: Buffer, originalName: string): string {
   mkdirSync(DATA_DIR, { recursive: true });
   const filename = `${randomUUID()}${extension}`;
   writeFileSync(join(DATA_DIR, filename), buffer);
+  const mime = MIME_BY_EXTENSION[extension] ?? "video/mp4";
+  void uploadVideoToStorage(buffer, filename, mime);
   return filename;
 }
 

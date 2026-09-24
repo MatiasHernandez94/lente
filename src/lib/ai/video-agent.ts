@@ -1,5 +1,7 @@
 import { join } from "node:path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import type { VideoRow } from "@/lib/schema";
 import type { Sport } from "@/lib/analysis/types";
 import { updateVideo } from "@/lib/repo";
@@ -7,6 +9,7 @@ import { extractVideoFrames, type ExtractedFrame } from "./frames";
 import { AIQuotaError, type AIProvider } from "./providers/types";
 import { getAIProviderRouter } from "./providers/router";
 import type { ImprovementsResult } from "./providers/types";
+import { downloadVideoFromStorage, readAnalysisFromStorage, saveAnalysisToStorage } from "@/lib/videos/storage";
 
 const UPLOADS_DIR = join(process.cwd(), "data", "uploads");
 const AI_RESULTS_DIR = join(process.cwd(), "data", "sports-analysis");
@@ -33,13 +36,20 @@ export interface SportVisionResult {
   provider: string;
 }
 
-/** Obtiene la ruta local del video subido (no YouTube). */
-function resolveLocalVideo(video: VideoRow): string | null {
+/** Obtiene la ruta local del video subido (no YouTube), descargando de Storage si hace falta. */
+async function resolveLocalVideo(video: VideoRow): Promise<string | null> {
   if (video.sourceType === "youtube") return null;
   const ref = video.sourceRef;
   if (!ref) return null;
   const filePath = join(UPLOADS_DIR, ref);
-  return existsSync(filePath) ? filePath : null;
+  if (existsSync(filePath)) return filePath;
+
+  // Producción: el archivo vive en Supabase Storage → lo descargamos a tmp.
+  const buffer = await downloadVideoFromStorage(ref);
+  if (!buffer) return null;
+  const tmpFile = join(tmpdir(), `lente-${randomUUID()}-${ref}`);
+  writeFileSync(tmpFile, buffer);
+  return tmpFile;
 }
 
 interface FramesResult {
@@ -52,7 +62,7 @@ interface FramesResult {
  * entornos sin el archivo devuelve error para que la UI explique por qué no se pudo.
  */
 async function extractFramesForAI(video: VideoRow): Promise<FramesResult> {
-  const videoPath = resolveLocalVideo(video);
+  const videoPath = await resolveLocalVideo(video);
   if (!videoPath) {
     throw new AIActionError(
       "video_unavailable",
@@ -217,47 +227,53 @@ function mapAIError(error: unknown): never {
   );
 }
 
-/** Persiste un resultado de IA en un archivo junto al análisis deportivo. */
+/** Persiste un resultado de IA junto al análisis deportivo (local + Storage). */
 export async function saveVideoAIInsight(
   videoId: string,
   kind: "sport_detection" | "improvements",
   payload: Record<string, unknown>,
 ): Promise<void> {
+  const existing = await getVideoAIInsight(videoId).catch(() => null);
+  const merged: Record<string, unknown> = {
+    ...(existing ?? {}),
+    [kind]: payload,
+    updated_at: new Date().toISOString(),
+  };
+
+  void saveAnalysisToStorage(`${videoId}.ai.json`, merged);
+
   try {
     if (!existsSync(AI_RESULTS_DIR)) {
       mkdirSync(AI_RESULTS_DIR, { recursive: true });
     }
-    const filePath = AI_INSIGHT_FILE(videoId);
-    const existing = existsSync(filePath)
-      ? safeParseJson<Record<string, unknown>>(readFileSync(filePath, "utf8"))
-      : {};
-    writeFileSync(
-      filePath,
-      JSON.stringify(
-        { ...existing, [kind]: payload, updated_at: new Date().toISOString() },
-        null,
-        2,
-      ),
-    );
+    writeFileSync(AI_INSIGHT_FILE(videoId), JSON.stringify(merged, null, 2));
   } catch (error) {
     console.error("saveVideoAIInsight:", error);
   }
 }
 
-/** Lee los insights de IA guardados para un video (o null si no existen). */
-export function getVideoAIInsight(
+/** Lee los insights de IA guardados para un video (local + Storage). */
+export async function getVideoAIInsight(
   videoId: string,
-): { sport_detection?: Record<string, unknown>; improvements?: Record<string, unknown> } | null {
-  const filePath = AI_INSIGHT_FILE(videoId);
-  if (!existsSync(filePath)) return null;
+): Promise<{ sport_detection?: Record<string, unknown>; improvements?: Record<string, unknown> } | null> {
   try {
-    return safeParseJson<{
-      sport_detection?: Record<string, unknown>;
-      improvements?: Record<string, unknown>;
-    }>(readFileSync(filePath, "utf8"));
+    const filePath = AI_INSIGHT_FILE(videoId);
+    if (existsSync(filePath)) {
+      const local = safeParseJson<{
+        sport_detection?: Record<string, unknown>;
+        improvements?: Record<string, unknown>;
+      }>(readFileSync(filePath, "utf8"));
+      if (local) return local;
+    }
   } catch {
-    return null;
+    // fallthrough a Storage
   }
+
+  const stored = await readAnalysisFromStorage<{
+    sport_detection?: Record<string, unknown>;
+    improvements?: Record<string, unknown>;
+  }>(`${videoId}.ai.json`);
+  return stored;
 }
 
 function safeParseJson<T>(raw: string): T | null {

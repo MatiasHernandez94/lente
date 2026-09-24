@@ -5,6 +5,7 @@ import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { join, extname } from "node:path";
 import { requireApiUser, serializeError } from "@/lib/api";
+import { resolveVideoSource } from "@/lib/videos/storage";
 
 const UPLOADS_DIR = join(process.cwd(), "data", "uploads");
 const SAFE_NAME = /^[0-9a-f-]{36}\.(mp4|mov|webm)$/;
@@ -26,20 +27,28 @@ export async function GET(_request: NextRequest, ctx: RouteContext<"/api/media/[
 
     const filePath = join(UPLOADS_DIR, file);
     const fileStat = await stat(filePath).catch(() => null);
-    if (!fileStat) {
-      return NextResponse.json({ error: "Recurso no encontrado." }, { status: 404 });
+    if (fileStat) {
+      const mime = MIME_BY_EXTENSION[extname(file).toLowerCase()] ?? "application/octet-stream";
+      const stream = Readable.toWeb(createReadStream(filePath));
+      return new NextResponse(stream as unknown as BodyInit, {
+        headers: {
+          "Content-Type": mime,
+          "Content-Length": String(fileStat.size),
+          "Cache-Control": "private, max-age=3600",
+        },
+      });
     }
 
-    const mime = MIME_BY_EXTENSION[extname(file).toLowerCase()] ?? "application/octet-stream";
-    const stream = Readable.toWeb(createReadStream(filePath));
+    // En producción el archivo está en Supabase Storage: redirigimos a una URL firmada.
+    const resolved = await resolveVideoSource(file, { localDir: UPLOADS_DIR });
+    if (resolved.streamUrl) {
+      return NextResponse.redirect(resolved.streamUrl);
+    }
 
-    return new NextResponse(stream as unknown as BodyInit, {
-      headers: {
-        "Content-Type": mime,
-        "Content-Length": String(fileStat.size),
-        "Cache-Control": "private, max-age=3600",
-      },
-    });
+    return NextResponse.json(
+      { error: "El archivo de video no está disponible en este entorno." },
+      { status: 404 },
+    );
   } catch (error) {
     return serializeError(error);
   }

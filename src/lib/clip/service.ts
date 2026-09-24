@@ -1,13 +1,14 @@
 import "server-only";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { getClient } from "@/lib/db";
 import type { VideoRow } from "@/lib/schema";
 import { ApiServiceError } from "@/lib/services/videoService";
+import { downloadVideoFromStorage } from "@/lib/videos/storage";
 
 const execFileAsync = promisify(execFile);
 const MAX_CLIP_SECONDS = 120;
@@ -46,6 +47,21 @@ export function resolveClipRange(
   return { start, duration };
 }
 
+async function resolveSourceFile(video: VideoRow): Promise<string> {
+  if (!video.sourceRef) throw new ApiServiceError(400, "El video no tiene archivo fuente.");
+  const source = join(UPLOADS_DIR, video.sourceRef);
+  if (existsSync(source)) return source;
+
+  // Producción: el archivo vive en Supabase Storage → lo descargamos a tmp.
+  const buffer = await downloadVideoFromStorage(video.sourceRef);
+  if (!buffer) {
+    throw new ApiServiceError(410, "El archivo de video ya no está disponible en el servidor.");
+  }
+  const tmpFile = join(tmpdir(), `clip-src-${randomUUID()}-${video.sourceRef}`);
+  writeFileSync(tmpFile, buffer);
+  return tmpFile;
+}
+
 /** Recorta un segmento del video fuente y lo devuelve como buffer MP4. */
 export async function extractClip(video: VideoRow, start: number, duration: number): Promise<Buffer> {
   const ffmpeg = ffmpegBin();
@@ -57,11 +73,7 @@ export async function extractClip(video: VideoRow, start: number, duration: numb
       const downloaded = await downloadYoutubeSection(video.sourceRef, start, duration);
       await transcodeToMp4(downloaded, outFile, ffmpeg);
     } else {
-      if (!video.sourceRef) throw new ApiServiceError(400, "El video no tiene archivo fuente.");
-      const source = join(UPLOADS_DIR, video.sourceRef);
-      if (!existsSync(source)) {
-        throw new ApiServiceError(410, "El archivo de video ya no está disponible en el servidor.");
-      }
+      const source = await resolveSourceFile(video);
       await transcodeToMp4(source, outFile, ffmpeg, start, duration);
     }
     return readFileSync(outFile);

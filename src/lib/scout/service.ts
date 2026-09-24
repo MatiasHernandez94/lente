@@ -1,7 +1,7 @@
 import "server-only";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -23,6 +23,7 @@ import type {
 import { makeCalibration, computePlayerMetrics } from "@/lib/scout/geom";
 import { ApiServiceError } from "@/lib/services/videoService";
 import { generateDemoScout, DEMO_VERSION } from "@/lib/scout/demo";
+import { downloadVideoFromStorage } from "@/lib/videos/storage";
 
 const execFileAsync = promisify(execFile);
 const ANALYZE_SCRIPT = join(process.cwd(), "scripts", "scout", "analyze.mjs");
@@ -82,10 +83,18 @@ async function resolveSourceVideo(video: VideoRow): Promise<string> {
     return downloadYoutube(video.sourceRef as string, video.id);
   }
   const filePath = join(UPLOADS_DIR, video.sourceRef as string);
-  if (!existsSync(filePath)) {
-    throw new Error("El archivo de video no está disponible en almacenamiento local.");
+  if (existsSync(filePath)) {
+    return filePath;
   }
-  return filePath;
+
+  // Producción: el archivo vive en Supabase Storage → lo descargamos a tmp.
+  const buffer = await downloadVideoFromStorage(video.sourceRef as string);
+  if (!buffer) {
+    throw new Error("El archivo de video no está disponible en almacenamiento.");
+  }
+  const tmpFile = join(tmpdir(), `scout-src-${randomUUID()}-${video.id}`);
+  writeFileSync(tmpFile, buffer);
+  return tmpFile;
 }
 
 async function downloadYoutube(url: string, videoId: string): Promise<string> {
