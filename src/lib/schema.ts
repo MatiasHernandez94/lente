@@ -29,6 +29,7 @@ export interface VideoRow {
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;
+  alumnoId: string | null;
 }
 
 export interface AnalysisRow {

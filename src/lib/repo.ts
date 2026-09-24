@@ -30,6 +30,7 @@ type VideoColumnRow = {
   error_message: string | null;
   created_at: string;
   updated_at: string;
+  alumno_id: string | null;
 };
 
 const parseVideo = (row: VideoColumnRow): VideoRow => ({
@@ -45,10 +46,11 @@ const parseVideo = (row: VideoColumnRow): VideoRow => ({
   errorMessage: row.error_message,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+  alumnoId: row.alumno_id,
 });
 
 const VIDEO_COLUMNS =
-  "id, user_id, title, sport, source_type, source_ref, duration_seconds, players, status, error_message, created_at, updated_at";
+  "id, user_id, title, sport, source_type, source_ref, duration_seconds, players, status, error_message, created_at, updated_at, alumno_id";
 
 function parseUser(data: {
   id: string;
@@ -165,13 +167,18 @@ export async function getVideoById(id: string): Promise<VideoRow | null> {
 
 export async function updateVideo(
   id: string,
-  fields: { title?: string; sport?: string },
+  fields: { title?: string; sport?: string; alumnoId?: string | null },
 ): Promise<void> {
-  const update: Record<string, string> = { updated_at: new Date().toISOString() };
+  const update: Record<string, string | null> = { updated_at: new Date().toISOString() };
   if (fields.title !== undefined) update.title = fields.title;
   if (fields.sport !== undefined) update.sport = fields.sport;
+  if (fields.alumnoId !== undefined) update.alumno_id = fields.alumnoId;
   const { error } = await getClient().from("videos").update(update).eq("id", id);
   if (error) postError("updateVideo", error);
+}
+
+export async function assignVideoToAlumno(id: string, alumnoId: string | null): Promise<void> {
+  await updateVideo(id, { alumnoId });
 }
 
 export async function updateVideoStatus(

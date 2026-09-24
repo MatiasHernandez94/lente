@@ -5,11 +5,11 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
-  ChevronDown,
   Clock,
   Flame,
   Footprints,
   Gauge,
+  Info,
   MessageCircle,
   Play,
   Radio,
@@ -23,6 +23,7 @@ import {
 import { ScoreRing } from "@/components/analysis/ScoreRing";
 import { CoachChat } from "@/components/coach/CoachChat";
 import { OKRDashboard } from "@/components/okrs/OKRDashboard";
+import { AIInsightsPanel } from "@/components/app/AIInsightsPanel";
 
 interface SoloAnalysis {
   activity_detected: boolean;
@@ -68,8 +69,23 @@ interface FatigueSummary {
   high_severity_risks: number;
 }
 
+interface SportSpecificMetric {
+  metric: string;
+  value: number | string | null;
+  unit: string;
+  confidence: number;
+  computed: boolean;
+}
+
+interface SportSpecificAnalysis {
+  sport: string;
+  metrics: SportSpecificMetric[];
+  limitations: string[];
+}
+
 interface SportsData {
   mode: "solo" | "team";
+  sport: string;
   video: { width: number; height: number; fps: number; duration_s: number };
   tracking: {
     summary: { total_players_detected: number };
@@ -88,11 +104,12 @@ interface SportsData {
   solo?: SoloAnalysis;
   tactical?: TeamAnalysis;
   fatigue?: { summary: FatigueSummary };
+  sport_specific?: SportSpecificAnalysis | null;
   processing_time_s: number;
 }
 
 type AnalysisStatus = "loading" | "none" | "ready" | "error";
-type ToolTab = "none" | "coach" | "okrs";
+type ToolTab = "none" | "coach" | "okrs" | "ai";
 
 interface Props {
   videoId: string;
@@ -248,6 +265,11 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sport, initialSec
                   <Radio size={10} className="text-red-500 animate-pulse" />
                   {isSolo ? "Individual" : "Equipo"}
                 </span>
+                {sport && sport !== "general" && (
+                  <span className="inline-flex items-center rounded-sm bg-ink/5 px-2 py-0.5 text-[10px] font-medium text-ink">
+                    {sportLabel(sport)}
+                  </span>
+                )}
                 <span className="text-[10px] text-muted">
                   {data.tracking.summary.total_players_detected} {isSolo ? "persona" : "jugadores"} · {data.video.duration_s.toFixed(0)}s
                 </span>
@@ -270,6 +292,9 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sport, initialSec
       {/* Metrics Grid */}
       {isSolo ? <SoloMetrics solo={data.solo!} /> : <TeamMetrics data={data} />}
 
+      {/* Sport-specific metrics */}
+      {data.sport_specific && <SportSpecificMetrics data={data.sport_specific} />}
+
       {/* Key Moments */}
       <KeyMoments data={data} />
 
@@ -288,6 +313,12 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sport, initialSec
             icon={<Target size={13} />}
             label="OKRs"
           />
+          <ToolTabButton
+            active={toolTab === "ai"}
+            onClick={() => setToolTab(toolTab === "ai" ? "none" : "ai")}
+            icon={<Sparkles size={13} />}
+            label="IA de visión"
+          />
         </div>
         {toolTab === "coach" && (
           <div className="p-4">
@@ -297,6 +328,11 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sport, initialSec
         {toolTab === "okrs" && (
           <div className="p-4">
             <OKRDashboard videoId={videoId} />
+          </div>
+        )}
+        {toolTab === "ai" && (
+          <div className="p-4">
+            <AIInsightsPanel videoId={videoId} playerCount={data.tracking.summary.total_players_detected ?? 0} />
           </div>
         )}
         {toolTab === "none" && (
@@ -523,7 +559,70 @@ function TeamMetrics({ data }: { data: SportsData }) {
   );
 }
 
-function KeyMoments({ data }: { data: SportsData }) {
+function SportSpecificMetrics({ data }: { data: SportSpecificAnalysis }) {
+  const metricLabels: Record<string, string> = {
+    velocidad_maxima: "Velocidad máxima",
+    botes_o_dribles: "Botes / dribles",
+    jugador_con_mas_posesion: "Jugador con más posesión",
+  };
+
+  return (
+    <div className="border border-hairline bg-surface p-4">
+      <h2 className="mb-1 flex items-center gap-2 text-base font-medium text-ink">
+        <Gauge size={16} /> Métricas específicas · {sportLabel(data.sport)}
+      </h2>
+      <p className="mb-3 text-xs text-muted">Análisis particular para este deporte usando el tracking del video.</p>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        {data.metrics.map((metric) => (
+          <div key={metric.metric} className="border border-hairline bg-surface p-3">
+            <div className="mb-1 flex items-center justify-between text-[10px] text-muted">
+              <span>{metricLabels[metric.metric] || metric.metric}</span>
+              {metric.computed ? (
+                <span className="font-medium text-green-600">calculado</span>
+              ) : (
+                <span className="font-medium text-amber-600">no calculado</span>
+              )}
+            </div>
+            <p className="text-sm font-semibold text-ink">
+              {metric.value === null || metric.value === undefined ? "—" : `${metric.value} ${metric.unit}`}
+            </p>
+            {metric.computed && (
+              <p className="text-[10px] text-muted">confianza {(metric.confidence * 100).toFixed(0)}%</p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {data.limitations.length > 0 && (
+        <div className="mt-3 border border-amber-200 bg-amber-50 p-3">
+          <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-amber-800">
+            <Info size={12} /> Por qué no se pudo medir todo
+          </p>
+          <ul className="space-y-1">
+            {data.limitations.map((limitation, i) => (
+              <li key={i} className="text-[12px] leading-4 text-amber-800">
+                · {limitation}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function sportLabel(sport: string): string {
+  const map: Record<string, string> = {
+    futbol: "Fútbol",
+    baloncesto: "Baloncesto",
+    voleibol: "Voleibol",
+    padel: "Pádel",
+    general: "General",
+  };
+  return map[sport] || sport;
+}
+  function KeyMoments({ data }: { data: SportsData }) {
   const events = data.events.event_summary;
   const entries = Object.entries(events);
   if (entries.length === 0 && data.mode === "solo") {

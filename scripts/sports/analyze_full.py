@@ -17,6 +17,7 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
 from detect_players import process_video
+from sport_specific import run_sport_specific_analysis
 
 TEAM_SPORTS = {"futbol", "padel", "voleibol", "baloncesto"}
 SOLO_SPORTS = {"general"}
@@ -49,6 +50,9 @@ def run_full_analysis(video_path, output_path=None, sample_fps=5, sport="general
     # A video with 2+ people simultaneously present is team activity.
     is_solo = max_concurrent <= 1 and person_count <= 1
 
+    # Analyze sport-specific features using tracking data (dribbles, speed, etc.)
+    sport_specific = run_sport_specific_analysis(tracking_data, sport)
+
     if is_solo:
         print(f"\n[Solo mode] {person_count} person detected → individual activity analysis")
         from solo_activity import run_solo_analysis
@@ -69,6 +73,7 @@ def run_full_analysis(video_path, output_path=None, sample_fps=5, sport="general
                 "players": tracking_data.get("players", []),
             },
             "solo": solo_result,
+            "sport_specific": sport_specific,
             "events": {"total_events": 0, "event_summary": {}, "events": [], "stats": {"frames_analyzed": len(tracking_data.get("frames", []))}},
             "tactical": {"formations": {}, "possession": {}, "pressing": {}, "transitions": {"total": 0, "events": []}, "heatmaps": {}},
             "fatigue": {"players": {}, "summary": {"total_players": 0, "fatigued_players": 0, "fatigued_player_ids": [], "total_injury_risks": 0, "high_severity_risks": 0}, "injury_risks": []},
@@ -105,6 +110,7 @@ def run_full_analysis(video_path, output_path=None, sample_fps=5, sport="general
             "events": events,
             "tactical": tactical,
             "fatigue": fatigue,
+            "sport_specific": sport_specific,
         }
 
     # Include frames data for overlay
