@@ -1,0 +1,1 @@
+alter table "correcciones" add column "clip_url" text;

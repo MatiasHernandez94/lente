@@ -30,7 +30,7 @@ export async function createCorreccion(input: NewCorreccionInput): Promise<Corre
       minuto_fin: input.minutoFin ?? null,
       created_at: new Date().toISOString(),
     })
-    .select("id, video_id, profesor_id, alumno_id, mensaje, minuto_inicio, minuto_fin, created_at")
+    .select("id, video_id, profesor_id, alumno_id, mensaje, minuto_inicio, minuto_fin, clip_url, created_at")
     .single();
   if (error) postError("createCorreccion", error);
   return parseCorreccion(data as CorreccionColumn);
@@ -40,7 +40,7 @@ export async function listCorreccionesByVideo(videoId: string): Promise<Correcci
   const { data, error } = await getClient()
     .from("correcciones")
     .select(
-      "id, video_id, profesor_id, alumno_id, mensaje, minuto_inicio, minuto_fin, created_at, users!correcciones_profesor_id_fkey(name)",
+      "id, video_id, profesor_id, alumno_id, mensaje, minuto_inicio, minuto_fin, clip_url, created_at, users!correcciones_profesor_id_fkey(name)",
     )
     .eq("video_id", videoId)
     .order("created_at", { ascending: false });
@@ -69,6 +69,7 @@ type CorreccionColumn = {
   mensaje: string;
   minuto_inicio: number | null;
   minuto_fin: number | null;
+  clip_url: string | null;
   created_at: string;
 };
 
@@ -81,6 +82,7 @@ function parseCorreccion(row: CorreccionColumn): CorreccionRow {
     mensaje: row.mensaje,
     minutoInicio: row.minuto_inicio,
     minutoFin: row.minuto_fin,
+    clipUrl: row.clip_url,
     createdAt: row.created_at,
   };
 }

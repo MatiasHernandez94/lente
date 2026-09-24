@@ -90,6 +90,7 @@ export interface CorreccionRow {
   mensaje: string;
   minutoInicio: number | null;
   minutoFin: number | null;
+  clipUrl: string | null;
   createdAt: string;
 }
 

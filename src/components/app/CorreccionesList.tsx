@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { CorreccionConProfesor } from "@/lib/schema";
 import { ShareActions } from "@/components/app/ShareActions";
+import { ClipButton } from "@/components/app/ClipButton";
 
 interface CorreccionesListProps {
   correcciones: CorreccionConProfesor[];
@@ -36,6 +37,11 @@ export function CorreccionesList({ correcciones, shareUrl, alumnoName, clipHrefP
               {correccion.minutoFin !== null ? `hasta ${formatMinuto(correccion.minutoFin)}` : ""}
             </p>
           ) : null}
+          {correccion.minutoInicio !== null ? (
+            <div className="mt-2.5 border-t border-hairline pt-2.5">
+              <ClipButton correccionId={correccion.id} clipUrl={correccion.clipUrl} />
+            </div>
+          ) : null}
           <div className="mt-3">
             <ShareActions
               videoUrl={shareUrl}
@@ -43,6 +49,7 @@ export function CorreccionesList({ correcciones, shareUrl, alumnoName, clipHrefP
               minutoInicio={correccion.minutoInicio}
               alumnoName={alumnoName}
               puntaje={puntaje}
+              clipUrl={correccion.clipUrl}
             />
           </div>
         </li>
