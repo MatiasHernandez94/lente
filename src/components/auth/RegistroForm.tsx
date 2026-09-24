@@ -33,7 +33,7 @@ export function RegistroForm({ deportes }: { deportes: Deporte[] }) {
 
   return (
     <form action={action} className="space-y-5" noValidate>
-      {state?.message && !state.errors ? (
+      {state?.message ? (
         <p
           role="alert"
           className={

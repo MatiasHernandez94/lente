@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const optionalNumber = z.preprocess(
   (value) => (value === "" || value === null || value === undefined ? undefined : Number(value)),
-  z.number({ message: "Ingrese un valor numérico." }).positive().max(500, "Valor fuera de rango."),
+  z.number({ message: "Ingrese un valor numérico." }).positive().max(500, "Valor fuera de rango.").optional(),
 );
 
 export const registerSchema = z
@@ -21,8 +21,9 @@ export const registerSchema = z
       .string()
       .trim()
       .max(60, "El deporte es demasiado largo.")
+      .nullable()
       .optional()
-      .transform((v) => v === "" ? undefined : v),
+      .transform((v) => (v === "" ? undefined : (v ?? undefined))),
     deportes: z
       .array(
         z
@@ -36,6 +37,7 @@ export const registerSchema = z
     tutorEmail: z
       .email("Ingrese un correo de tutor válido.")
       .trim()
+      .nullable()
       .optional()
       .or(z.literal("")),
     termsAccepted: z.boolean().refine((v) => v === true, "Debe aceptar los términos y condiciones."),
@@ -64,11 +66,13 @@ export const profileSchema = z.object({
     .string()
     .trim()
     .max(60, "El deporte es demasiado largo.")
+    .nullable()
     .optional()
-    .transform((v) => (v === "" ? undefined : v)),
+    .transform((v) => (v === "" ? undefined : (v ?? undefined))),
   tutorEmail: z
     .email("Ingrese un correo de tutor válido.")
     .trim()
+    .nullable()
     .optional()
     .or(z.literal("")),
 });
