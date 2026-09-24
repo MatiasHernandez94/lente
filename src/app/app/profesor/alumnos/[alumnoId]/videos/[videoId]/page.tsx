@@ -2,27 +2,31 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/session";
-import { getVideoById, getUserById } from "@/lib/repo";
+import { getVideoById, getUserById, getAnalysisForVideo } from "@/lib/repo";
 import { isAlumnoOf } from "@/lib/profile/service";
 import { listCorreccionesByVideo } from "@/lib/correccion/service";
 import { PLAYER_LABEL, formatShortDate } from "@/lib/format";
 import { VideoInsights } from "@/components/app/VideoInsights";
 import { CorrectionForm } from "@/components/app/CorrectionForm";
-import { ShareActions } from "@/components/app/ShareActions";
 import { CorreccionesList } from "@/components/app/CorreccionesList";
 
 interface CorreccionVideoPageProps {
   params: Promise<{ alumnoId: string; videoId: string }>;
+  searchParams?: Promise<{ t?: string }>;
 }
 
 export const metadata: Metadata = { title: "Corregir video" };
 
-export default async function CorreccionVideoPage({ params }: CorreccionVideoPageProps) {
+export default async function CorreccionVideoPage({ params, searchParams }: CorreccionVideoPageProps) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
   if (user.rol !== "profesor") redirect("/app");
 
   const { alumnoId, videoId } = await params;
+  const { t } = (await searchParams) ?? {};
+  const initialSeconds = parseInt(t ?? "", 10);
+  const hasClip = Number.isFinite(initialSeconds) && initialSeconds > 0;
+
   const [linked, video, alumno] = await Promise.all([
     isAlumnoOf(user.id, alumnoId),
     getVideoById(videoId),
@@ -30,7 +34,10 @@ export default async function CorreccionVideoPage({ params }: CorreccionVideoPag
   ]);
   if (!linked || !video || video.userId !== alumnoId) notFound();
 
-  const correcciones = await listCorreccionesByVideo(videoId);
+  const [correcciones, analysis] = await Promise.all([
+    listCorreccionesByVideo(videoId),
+    getAnalysisForVideo(videoId),
+  ]);
 
   const videoUrl =
     video.sourceType === "youtube"
@@ -59,7 +66,13 @@ export default async function CorreccionVideoPage({ params }: CorreccionVideoPag
       <div className="grid gap-8 lg:grid-cols-[1.6fr_1fr]">
         <div className="space-y-6">
           {videoUrl ? (
-            <VideoInsights videoId={video.id} videoTitle={video.title} videoUrl={videoUrl} sport={video.sport} />
+            <VideoInsights
+              videoId={video.id}
+              videoTitle={video.title}
+              videoUrl={videoUrl}
+              sport={video.sport}
+              initialSeconds={hasClip ? initialSeconds : undefined}
+            />
           ) : (
             <p className="text-sm text-muted">El análisis deportivo requiere un video local.</p>
           )}
@@ -82,7 +95,13 @@ export default async function CorreccionVideoPage({ params }: CorreccionVideoPag
               <p className="text-sm text-muted">Aún no hay correcciones para este video.</p>
             </div>
           ) : (
-            <CorreccionesList correcciones={correcciones} shareUrl={shareUrl} alumnoName={alumno?.name} />
+            <CorreccionesList
+              correcciones={correcciones}
+              shareUrl={shareUrl}
+              alumnoName={alumno?.name}
+              clipHrefPrefix={`/app/profesor/alumnos/${alumnoId}/videos`}
+              puntaje={analysis?.score ?? null}
+            />
           )}
         </aside>
       </div>

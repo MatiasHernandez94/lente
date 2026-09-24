@@ -10,6 +10,7 @@ import type { UserRol } from "@/lib/schema";
 interface AppShellProps {
   userName: string;
   userRol: UserRol;
+  unreadAlumnos?: number;
   children: React.ReactNode;
 }
 
@@ -22,9 +23,21 @@ const NAV_ITEMS = [
 
 const PROFESOR_NAV_ITEM = { href: "/app/profesor", label: "Alumnos", icon: GraduationCap };
 
-export function AppShell({ userName, userRol, children }: AppShellProps) {
+export function AppShell({ userName, userRol, unreadAlumnos = 0, children }: AppShellProps) {
   const pathname = usePathname();
   const navItems = userRol === "profesor" ? [...NAV_ITEMS.slice(0, 1), PROFESOR_NAV_ITEM, ...NAV_ITEMS.slice(1)] : NAV_ITEMS;
+
+  function Badge() {
+    if (unreadAlumnos === 0) return null;
+    return (
+      <span
+        className="flex size-4 items-center justify-center rounded-full bg-ink text-[10px] font-semibold leading-none text-canvas"
+        aria-label={`${unreadAlumnos} notificaciones sin leer`}
+      >
+        {unreadAlumnos > 9 ? "9+" : unreadAlumnos}
+      </span>
+    );
+  }
 
   return (
     <div className="flex min-h-dvh flex-col bg-canvas">
@@ -35,6 +48,7 @@ export function AppShell({ userName, userRol, children }: AppShellProps) {
           <nav className="hidden items-center gap-1 md:flex" aria-label="Navegación principal">
             {navItems.map(({ href, label, icon: Icon }) => {
               const active = href === "/app" ? pathname === "/app" : pathname.startsWith(href);
+              const badge = href === PROFESOR_NAV_ITEM.href ? <Badge /> : null;
               return (
                 <Link
                   key={href}
@@ -46,6 +60,7 @@ export function AppShell({ userName, userRol, children }: AppShellProps) {
                 >
                   <Icon size={15} strokeWidth={1.8} aria-hidden="true" />
                   {label}
+                  {badge}
                 </Link>
               );
             })}
@@ -89,6 +104,7 @@ export function AppShell({ userName, userRol, children }: AppShellProps) {
         <nav className="flex items-center border-t border-hairline px-2 md:hidden" aria-label="Navegación móvil">
           {navItems.map(({ href, label, icon: Icon }) => {
             const active = href === "/app" ? pathname === "/app" : pathname.startsWith(href);
+            const badge = href === PROFESOR_NAV_ITEM.href ? <Badge /> : null;
             return (
               <Link
                 key={href}
@@ -100,6 +116,7 @@ export function AppShell({ userName, userRol, children }: AppShellProps) {
               >
                 <Icon size={14} strokeWidth={1.8} aria-hidden="true" />
                 {label}
+                {badge}
               </Link>
             );
           })}

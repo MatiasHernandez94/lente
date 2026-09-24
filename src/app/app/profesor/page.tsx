@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { GraduationCap, ArrowRight } from "lucide-react";
 import { getSessionUser } from "@/lib/session";
 import { listAlumnosConDetalle } from "@/lib/profile/service";
+import { listNotificaciones, markNotificacionesRead } from "@/lib/notificacion/service";
 
 export const metadata: Metadata = { title: "Mis alumnos" };
 
@@ -12,7 +13,11 @@ export default async function ProfesorPage() {
   if (!user) redirect("/login");
   if (user.rol !== "profesor") redirect("/app");
 
-  const alumnos = await listAlumnosConDetalle(user.id);
+  await markNotificacionesRead(user.id);
+  const [alumnos, notificaciones] = await Promise.all([
+    listAlumnosConDetalle(user.id),
+    listNotificaciones(user.id),
+  ]);
 
   return (
     <div className="space-y-10">
@@ -25,6 +30,20 @@ export default async function ProfesorPage() {
           Revisa los análisis que te comparten tus alumnas y alumnos, y deja correcciones con un toque.
         </p>
       </header>
+
+      {notificaciones.length > 0 ? (
+        <section aria-label="Notificaciones">
+          <h2 className="mb-3 text-sm font-medium text-muted">Novedades</h2>
+          <ul className="space-y-2">
+            {notificaciones.map((notificacion) => (
+              <li key={notificacion.id} className="border border-hairline bg-surface px-4 py-3 text-sm text-muted">
+                {notificacion.mensaje}
+                <span className="ml-2 text-[11px] text-soft">· {new Date(notificacion.createdAt).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {alumnos.length === 0 ? (
         <section className="border border-hairline bg-surface px-6 py-16 text-center">

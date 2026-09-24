@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { CorreccionConProfesor } from "@/lib/schema";
 import { ShareActions } from "@/components/app/ShareActions";
 
@@ -5,16 +6,28 @@ interface CorreccionesListProps {
   correcciones: CorreccionConProfesor[];
   shareUrl: string;
   alumnoName?: string;
+  clipHrefPrefix?: string;
+  puntaje?: number | null;
 }
 
-export function CorreccionesList({ correcciones, shareUrl, alumnoName }: CorreccionesListProps) {
+export function CorreccionesList({ correcciones, shareUrl, alumnoName, clipHrefPrefix, puntaje }: CorreccionesListProps) {
   return (
     <ul className="space-y-3">
       {correcciones.map((correccion) => (
         <li key={correccion.id} className="border border-hairline bg-canvas p-4">
           <div className="flex items-start justify-between gap-3">
             <p className="text-[13px] font-medium text-ink">{correccion.profesorName}</p>
-            <span className="label text-soft">min {correccion.minutoInicio ?? "—"}</span>
+            {correccion.minutoInicio !== null ? (
+              <Link
+                href={`${clipHrefPrefix ?? "/app/videos"}/${correccion.videoId}?t=${correccion.minutoInicio * 60}`}
+                className="label text-soft underline underline-offset-4 hover:text-ink"
+                title="Ver el video en ese instante"
+              >
+                min {correccion.minutoInicio}
+              </Link>
+            ) : (
+              <span className="label text-soft">—</span>
+            )}
           </div>
           <p className="mt-2 whitespace-pre-line text-sm leading-6 text-muted">{correccion.mensaje}</p>
           {correccion.minutoInicio || correccion.minutoFin ? (
@@ -29,6 +42,7 @@ export function CorreccionesList({ correcciones, shareUrl, alumnoName }: Correcc
               mensaje={correccion.mensaje}
               minutoInicio={correccion.minutoInicio}
               alumnoName={alumnoName}
+              puntaje={puntaje}
             />
           </div>
         </li>

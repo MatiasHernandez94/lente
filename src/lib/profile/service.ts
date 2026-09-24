@@ -1,6 +1,8 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { getClient } from "@/lib/db";
 import type { UserRow } from "@/lib/schema";
+import { getUserById } from "@/lib/repo";
 import type { Deporte, ProfileInput, TutorLink } from "./types";
 
 function postError(operation: string, error: unknown): never {
@@ -108,14 +110,38 @@ export async function linkTutor(alumnoId: string, tutorEmail: string): Promise<b
   const tutor = await getUserByEmail(tutorEmail);
   if (!tutor || tutor.rol !== "profesor") return false;
 
+  const existing = await getClient()
+    .from("profesor_alumno")
+    .select("profesor_id")
+    .eq("profesor_id", tutor.id)
+    .eq("alumno_id", alumnoId)
+    .maybeSingle();
+  if (existing.error) postError("linkTutor", existing.error);
+  if (existing.data) return true;
+
   const { error } = await getClient()
     .from("profesor_alumno")
-    .upsert(
-      { profesor_id: tutor.id, alumno_id: alumnoId, created_at: new Date().toISOString() },
-      { onConflict: "profesor_id,alumno_id", ignoreDuplicates: true },
-    );
+    .insert({ profesor_id: tutor.id, alumno_id: alumnoId, created_at: new Date().toISOString() });
   if (error) postError("linkTutor", error);
+
+  const alumno = await getUserById(alumnoId);
+  const { error: notifError } = await getClient().from("notificaciones").insert({
+    id: randomUUID(),
+    user_id: tutor.id,
+    tipo: "nuevo_alumno",
+    mensaje: `${alumno?.name ?? "Una alumna/o"} te vinculó como su profesor/a.`,
+    ref_id: alumnoId,
+    leida: false,
+    created_at: new Date().toISOString(),
+  });
+  if (notifError) postError("linkTutor (notificación)", notifError);
   return true;
+}
+
+export async function applyPendingTutorLink(alumnoId: string): Promise<boolean> {
+  const alumno = await getUserById(alumnoId);
+  if (!alumno || alumno.rol !== "alumno" || !alumno.tutorEmail) return false;
+  return linkTutor(alumnoId, alumno.tutorEmail);
 }
 
 export async function listTutors(alumnoId: string): Promise<TutorLink[]> {

@@ -10,7 +10,7 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
 } from "@/lib/validation";
-import { ensureDeporte, linkTutor, setUserDeportes, updateProfile } from "@/lib/profile/service";
+import { ensureDeporte, linkTutor, setUserDeportes, updateProfile, applyPendingTutorLink } from "@/lib/profile/service";
 import { assertNotRateLimited } from "@/lib/rateLimit";
 import type { UserRol } from "@/lib/schema";
 
@@ -116,7 +116,7 @@ export async function register(_prevState: AuthFormState | undefined, formData: 
       termsAccepted: true,
     });
 
-    if (rol === "alumno" && tutorEmail) {
+    if (rol === "alumno" && tutorEmail && data.session) {
       await linkTutor(userId, tutorEmail);
     }
   }
@@ -166,6 +166,10 @@ export async function login(_prevState: AuthFormState | undefined, formData: For
     email: data.user.email,
     createdAt: data.user.created_at,
   });
+
+  if (data.user.email_confirmed_at) {
+    await applyPendingTutorLink(data.user.id);
+  }
 
   redirect("/app");
 }

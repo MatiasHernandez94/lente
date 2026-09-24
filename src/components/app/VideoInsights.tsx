@@ -99,9 +99,10 @@ interface Props {
   videoTitle: string;
   videoUrl: string;
   sport: string;
+  initialSeconds?: number;
 }
 
-export function VideoInsights({ videoId, videoTitle, videoUrl, sport }: Props) {
+export function VideoInsights({ videoId, videoTitle, videoUrl, sport, initialSeconds }: Props) {
   const [status, setStatus] = useState<AnalysisStatus>("loading");
   const [data, setData] = useState<SportsData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -162,7 +163,7 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sport }: Props) {
   if (status === "loading") {
     return (
       <div className="space-y-6">
-        <VideoHero videoUrl={videoUrl} title={videoTitle} />
+        <VideoHero videoUrl={videoUrl} title={videoTitle} initialSeconds={initialSeconds} />
         <div className="border border-hairline bg-surface p-12 text-center">
           <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-2 border-ink/20 border-t-ink" />
           <p className="text-sm font-medium text-ink">Procesando con YOLOv8</p>
@@ -176,7 +177,7 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sport }: Props) {
   if (status === "error") {
     return (
       <div className="space-y-6">
-        <VideoHero videoUrl={videoUrl} title={videoTitle} />
+        <VideoHero videoUrl={videoUrl} title={videoTitle} initialSeconds={initialSeconds} />
         <div className="border border-red-200 bg-red-50 p-8 text-center">
           <AlertTriangle className="mx-auto mb-2 text-red-500" size={24} />
           <p className="text-sm text-red-700">{error}</p>
@@ -192,7 +193,7 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sport }: Props) {
   if (status === "none" || !data) {
     return (
       <div className="space-y-6">
-        <VideoHero videoUrl={videoUrl} title={videoTitle} />
+        <VideoHero videoUrl={videoUrl} title={videoTitle} initialSeconds={initialSeconds} />
         <div className="border border-hairline bg-surface p-10 text-center">
           {polling ? (
             <>
@@ -230,7 +231,7 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sport }: Props) {
     <div className="space-y-6">
       {/* Video + Score Hero */}
       <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <VideoHero videoUrl={videoUrl} title={videoTitle} />
+        <VideoHero videoUrl={videoUrl} title={videoTitle} initialSeconds={initialSeconds} />
 
         <div className="flex flex-col justify-between gap-4">
           <div className="flex items-start gap-5">
@@ -310,10 +311,32 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sport }: Props) {
 
 // ── Sub-components ──
 
-function VideoHero({ videoUrl, title }: { videoUrl: string; title: string }) {
+function VideoHero({
+  videoUrl,
+  title,
+  initialSeconds,
+}: {
+  videoUrl: string;
+  title: string;
+  initialSeconds?: number;
+}) {
+  const [seekAttempted, setSeekAttempted] = useState(false);
+
   return (
     <div className="relative bg-black border border-hairline overflow-hidden">
-      <video src={videoUrl} controls className="w-full" crossOrigin="anonymous" />
+      <video
+        src={videoUrl}
+        controls
+        className="w-full"
+        crossOrigin="anonymous"
+        onLoadedMetadata={(event) => {
+          if (!seekAttempted && initialSeconds !== undefined && initialSeconds > 0) {
+            const video = event.currentTarget;
+            video.currentTime = Math.min(initialSeconds, video.duration || initialSeconds);
+            setSeekAttempted(true);
+          }
+        }}
+      />
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
         <p className="text-sm font-medium text-white">{title}</p>
       </div>

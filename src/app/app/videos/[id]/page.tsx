@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Activity, BarChart3, Crosshair } from "lucide-react";
-import { getVideoById } from "@/lib/repo";
+import { getVideoById, getAnalysisForVideo } from "@/lib/repo";
 import { getSessionUser } from "@/lib/session";
 import { listCorreccionesByVideo } from "@/lib/correccion/service";
 import { PLAYER_LABEL, formatShortDate } from "@/lib/format";
@@ -12,20 +12,27 @@ import { CorreccionesList } from "@/components/app/CorreccionesList";
 
 interface DetailPageProps {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ t?: string }>;
 }
 
 export const metadata: Metadata = { title: "Análisis" };
 
-export default async function VideoDetailPage({ params }: DetailPageProps) {
+export default async function VideoDetailPage({ params, searchParams }: DetailPageProps) {
   const user = await getSessionUser();
   const { id } = await params;
+  const { t } = (await searchParams) ?? {};
+  const initialSeconds = parseInt(t ?? "", 10);
+  const hasClip = Number.isFinite(initialSeconds) && initialSeconds > 0;
 
   const video = await getVideoById(id);
   if (!video || user === null || video.userId !== user.id) {
     notFound();
   }
 
-  const correcciones = await listCorreccionesByVideo(id);
+  const [correcciones, analysis] = await Promise.all([
+    listCorreccionesByVideo(id),
+    getAnalysisForVideo(id),
+  ]);
   const shareUrl = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/app/videos/${video.id}`;
 
   const videoUrl =
@@ -85,6 +92,7 @@ export default async function VideoDetailPage({ params }: DetailPageProps) {
           videoTitle={video.title}
           videoUrl={videoUrl}
           sport={video.sport}
+          initialSeconds={hasClip ? initialSeconds : undefined}
         />
       ) : (
         <div className="border border-hairline bg-surface px-6 py-10 text-center">
@@ -94,15 +102,21 @@ export default async function VideoDetailPage({ params }: DetailPageProps) {
         </div>
       )}
 
-      {correcciones.length > 0 ? (
-        <section>
-          <h2 className="mb-4 text-base font-medium text-ink">
-            Correcciones de {correcciones[0].profesorName}
-            {correcciones.length > 1 ? ` y ${correcciones.length - 1} más` : ""}
-          </h2>
-          <CorreccionesList correcciones={correcciones} shareUrl={shareUrl} />
-        </section>
-      ) : null}
+      <section>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-medium text-ink">Correcciones de tus profesores</h2>
+          {hasClip ? (
+            <p className="text-[12px] text-muted">Video abierto en el minuto indicado por la corrección.</p>
+          ) : null}
+        </div>
+        {correcciones.length === 0 ? (
+          <div className="border border-hairline bg-surface px-6 py-10 text-center">
+            <p className="text-sm text-muted">Tus profesores aún no dejaron correcciones en este video.</p>
+          </div>
+        ) : (
+          <CorreccionesList correcciones={correcciones} shareUrl={shareUrl} puntaje={analysis?.score ?? null} />
+        )}
+      </section>
     </div>
   );
 }

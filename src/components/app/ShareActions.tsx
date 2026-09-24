@@ -8,9 +8,11 @@ interface ShareActionsProps {
   mensaje: string;
   minutoInicio?: number | null;
   alumnoName?: string;
+  puntaje?: number | null;
+  estadisticas?: string | null;
 }
 
-export function ShareActions({ videoUrl, mensaje, minutoInicio, alumnoName }: ShareActionsProps) {
+export function ShareActions({ videoUrl, mensaje, minutoInicio, alumnoName, puntaje, estadisticas }: ShareActionsProps) {
   const [copied, setCopied] = useState(false);
 
   const texto = [
@@ -18,6 +20,8 @@ export function ShareActions({ videoUrl, mensaje, minutoInicio, alumnoName }: Sh
     "",
     mensaje,
     minutoInicio ? `Mira el video desde el minuto ${minutoInicio}.` : "",
+    puntaje !== undefined && puntaje !== null ? `Puntaje del análisis: ${puntaje}/100.` : "",
+    estadisticas ? estadisticas : "",
     "",
     videoUrl,
   ]
