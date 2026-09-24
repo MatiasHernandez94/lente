@@ -1,23 +1,17 @@
 import "server-only";
-import { randomUUID } from "node:crypto";
 import { getClient } from "@/lib/db";
-import { ensureUserProfile, getUserById } from "@/lib/repo";
-import { updateProfile } from "@/lib/profile/service";
+import { ensureUserProfile } from "@/lib/repo";
 import type { UserRol } from "@/lib/schema";
 
-export const DEMO_ADMIN_EMAIL = "admin@lente.dev";
-const DEMO_PASSWORD_PREFIX = "demo-";
+export const DEMO_PASSWORD = "lente-demo-2026";
+
+export const DEMO_USERS: Record<UserRol, { email: string; name: string }> = {
+  profesor: { email: "admin.profesor@lente.dev", name: "Admin Profesor" },
+  alumno: { email: "admin.alumno@lente.dev", name: "Admin Alumno" },
+};
 
 export function isDemoAdminEnabled(): boolean {
   return process.env.LENTE_DEMO_ADMIN === "1" || process.env.NODE_ENV !== "production";
-}
-
-export function demoAdminEmail(): string {
-  return process.env.LENTE_DEMO_ADMIN_EMAIL?.trim() || DEMO_ADMIN_EMAIL;
-}
-
-export async function isDemoAdminUser(email: string): Promise<boolean> {
-  return isDemoAdminEnabled() && email.toLowerCase() === demoAdminEmail().toLowerCase();
 }
 
 async function findAuthUserByEmail(email: string): Promise<string | null> {
@@ -34,36 +28,34 @@ async function findAuthUserByEmail(email: string): Promise<string | null> {
   return null;
 }
 
-export async function ensureDemoUser(rol: UserRol): Promise<string> {
+/** Crea los dos usuarios demo (si no existen) y sus perfiles. Idempotente. */
+export async function ensureDemoUsers(): Promise<void> {
   const admin = getClient();
-  const email = demoAdminEmail();
-  const authId = await findAuthUserByEmail(email);
+  for (const { email, name } of Object.values(DEMO_USERS)) {
+    const userId = await findAuthUserByEmail(email);
+    if (userId) {
+      await ensureUserProfile({
+        id: userId,
+        name,
+        email,
+        createdAt: new Date().toISOString(),
+      });
+      continue;
+    }
 
-  let userId = authId;
-  if (!userId) {
-    const password = `${DEMO_PASSWORD_PREFIX}${randomUUID()}`;
     const { data, error } = await admin.auth.admin.createUser({
       email,
-      password,
+      password: DEMO_PASSWORD,
       email_confirm: true,
-      user_metadata: { name: "Administrador Lente" },
+      user_metadata: { name },
     });
-    if (error) throw new Error(`No se pudo crear el usuario demo: ${error.message}`);
-    userId = data.user.id;
+    if (error) throw new Error(`No se pudo crear el usuario demo ${email}: ${error.message}`);
+
+    await ensureUserProfile({
+      id: data.user.id,
+      name,
+      email,
+      createdAt: data.user.created_at,
+    });
   }
-
-  await ensureUserProfile({
-    id: userId,
-    name: "Administrador Lente",
-    email,
-    createdAt: new Date().toISOString(),
-  });
-
-  const profile = await getUserById(userId);
-  await updateProfile(userId, {
-    rol,
-    deporteDocente: rol === "profesor" ? profile?.deporteDocente ?? "Fútbol" : null,
-    termsAccepted: true,
-  });
-  return userId;
 }
