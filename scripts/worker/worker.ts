@@ -2,7 +2,7 @@ import "server-only";
 import { readFileSync } from "node:fs";
 import { getVideoById } from "@/lib/repo";
 import { claimNextPendingJob, finishProcessingJob } from "@/lib/processor";
-import { AIActionError, detectSportWithVision, generateImprovementsWithVision, saveVideoAIInsight } from "@/lib/ai/video-agent";
+import { AIActionError, detectSportWithVision, generateCoachReportWithVision, generateImprovementsWithVision, saveVideoAIInsight } from "@/lib/ai/video-agent";
 
 // ── Env loading ────────────────────────────────────────────────────────────────
 // tsx no carga .env.local por defecto; acá lo hacemos manual (como run-migrations).
@@ -57,6 +57,14 @@ async function processJob(job: { id: string; videoId: string; kind: string; payl
     const analysis = await getSportAnalysis(video.id);
     const result = await generateImprovementsWithVision(video, (analysis ?? null) as Record<string, unknown> | null);
     await saveVideoAIInsight(video.id, "improvements", { ...result, at: new Date().toISOString() });
+    return;
+  }
+
+  if (job.kind === "coach-report") {
+    const { getSportAnalysis } = await import("@/lib/sports/service");
+    const analysis = await getSportAnalysis(video.id);
+    const result = await generateCoachReportWithVision(video, (analysis ?? null) as Record<string, unknown> | null);
+    await saveVideoAIInsight(video.id, "coach_report", { ...result, at: new Date().toISOString() });
     return;
   }
 

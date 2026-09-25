@@ -11,6 +11,7 @@ import { getAIProviderRouter } from "./providers/router";
 import type { ImprovementsResult } from "./providers/types";
 import { downloadVideoFromStorage, readAnalysisFromStorage, saveAnalysisToStorage } from "@/lib/videos/storage";
 import { downloadYouTubeVideo } from "@/lib/videos/youtube";
+import { buildCoachTimeline } from "./coach";
 
 const UPLOADS_DIR = join(process.cwd(), "data", "uploads");
 const AI_RESULTS_DIR = join(process.cwd(), "data", "sports-analysis");
@@ -234,10 +235,90 @@ function mapAIError(error: unknown): never {
   );
 }
 
+export interface CoachReportVisionResult {
+  summary: string;
+  positives: Array<{ title: string; detail: string; time_s: number | null }>;
+  improvements: Array<{ title: string; detail: string; time_s: number | null }>;
+  provider: string;
+}
+
+/**
+ * Genera un informe táctico de coach con datos del análisis y fotogramas.
+ * Cada observación referencia un segundo del video (o null si es general).
+ */
+export async function generateCoachReportWithVision(
+  video: VideoRow,
+  analysis: Record<string, unknown> | null,
+): Promise<CoachReportVisionResult> {
+  const { frames } = await extractFramesForAI(video);
+  const { metrics, limitations } = summarizeAnalysisForAgent(video, analysis ?? {});
+  const timeline = buildCoachTimeline(analysis ?? {});
+
+  const ctx = {
+    videoTitle: video.title,
+    sport: analysis?.sport === "general" ? video.sport : ((analysis?.sport as Sport) ?? video.sport),
+    mode: String(analysis?.mode ?? "solo"),
+    durationSeconds: video.durationSeconds,
+    metrics,
+    timeline,
+    limitations,
+    frames: frames.map((f) => ({
+      base64: f.base64,
+      mimeType: f.mimeType,
+      timeSeconds: f.timeSeconds,
+    })),
+  };
+
+  try {
+    const { result, provider } = await withRouter((p) => p.generateCoachReport(ctx));
+    return { ...result, provider };
+  } catch (error) {
+    throw mapAIError(error);
+  }
+}
+
+/** Chat del coach con IA real usando análisis + informe generado. */
+export async function generateCoachChatAnswer(
+  video: VideoRow,
+  analysis: Record<string, unknown> | null,
+  message: string,
+  history: Array<{ role: "user" | "assistant"; content: string }>,
+  report: CoachReportVisionResult | null,
+): Promise<string> {
+  const { metrics, limitations } = summarizeAnalysisForAgent(video, analysis ?? {});
+  const timeline = buildCoachTimeline(analysis ?? {});
+
+  const ctx = {
+    videoTitle: video.title,
+    sport: analysis?.sport === "general" ? video.sport : ((analysis?.sport as Sport) ?? video.sport),
+    mode: String(analysis?.mode ?? "solo"),
+    durationSeconds: video.durationSeconds,
+    metrics,
+    timeline,
+    limitations,
+    report: report
+      ? {
+          summary: report.summary,
+          positives: report.positives,
+          improvements: report.improvements,
+        }
+      : null,
+    history,
+    message,
+  };
+
+  try {
+    const { result } = await withRouter((p) => p.coachChat(ctx));
+    return result;
+  } catch (error) {
+    throw mapAIError(error);
+  }
+}
+
 /** Persiste un resultado de IA junto al análisis deportivo (local + Storage). */
 export async function saveVideoAIInsight(
   videoId: string,
-  kind: "sport_detection" | "improvements",
+  kind: "sport_detection" | "improvements" | "coach_report" | "coach_chat",
   payload: Record<string, unknown>,
 ): Promise<void> {
   const existing = await getVideoAIInsight(videoId).catch(() => null);
@@ -259,27 +340,63 @@ export async function saveVideoAIInsight(
   }
 }
 
+export interface CoachChatRecord {
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  at: string;
+}
+
+/** Lee la conversación persistida del coach para un video (local + Storage). */
+export async function getCoachConversation(
+  videoId: string,
+): Promise<CoachChatRecord | null> {
+  const insight = await getVideoAIInsight(videoId).catch(() => null);
+  const record = insight?.coach_chat as Partial<CoachChatRecord> | undefined;
+  if (!record || !Array.isArray(record.messages)) return null;
+  return {
+    messages: record.messages
+      .map((m) => ({
+        role: m?.role === "assistant" ? "assistant" as const : "user" as const,
+        content: String(m?.content ?? ""),
+      }))
+      .filter((m) => m.content.trim() !== ""),
+    at: String(record.at ?? ""),
+  };
+}
+
+/** Persiste la conversación del coach de un video (local + Storage). */
+export async function saveCoachConversation(
+  videoId: string,
+  messages: Array<{ role: "user" | "assistant"; content: string }>,
+): Promise<void> {
+  const capped = messages.slice(-60);
+  await saveVideoAIInsight(videoId, "coach_chat", {
+    messages: capped,
+    at: new Date().toISOString(),
+  });
+}
+
+type VideoAIInsight = {
+  sport_detection?: Record<string, unknown>;
+  improvements?: Record<string, unknown>;
+  coach_report?: Record<string, unknown>;
+  coach_chat?: Record<string, unknown>;
+};
+
 /** Lee los insights de IA guardados para un video (local + Storage). */
 export async function getVideoAIInsight(
   videoId: string,
-): Promise<{ sport_detection?: Record<string, unknown>; improvements?: Record<string, unknown> } | null> {
+): Promise<VideoAIInsight | null> {
   try {
     const filePath = AI_INSIGHT_FILE(videoId);
     if (existsSync(filePath)) {
-      const local = safeParseJson<{
-        sport_detection?: Record<string, unknown>;
-        improvements?: Record<string, unknown>;
-      }>(readFileSync(filePath, "utf8"));
+      const local = safeParseJson<VideoAIInsight>(readFileSync(filePath, "utf8"));
       if (local) return local;
     }
   } catch {
     // fallthrough a Storage
   }
 
-  const stored = await readAnalysisFromStorage<{
-    sport_detection?: Record<string, unknown>;
-    improvements?: Record<string, unknown>;
-  }>(`${videoId}.ai.json`);
+  const stored = await readAnalysisFromStorage<VideoAIInsight>(`${videoId}.ai.json`);
   return stored;
 }
 

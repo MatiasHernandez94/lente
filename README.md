@@ -8,8 +8,8 @@ Los análisis con modelo de visión (Gemini), la descarga de videos de YouTube (
 el pipeline deportivo completo (Python/YOLO/ffmpeg) no corren en Vercel (timeout de 60s
 y sin binarios). Se implementa con una **cola de trabajos en Supabase**:
 
-- **App (Vercel)**: los endpoints `POST /api/videos/[id]/detectar-deporte`, `/mejoras` y
-  `/sports` encolan un job en la tabla `processing_jobs` y responden `{status:"queued"}`
+- **App (Vercel)**: los endpoints `POST /api/videos/[id]/detectar-deporte`, `/mejoras`, `/sports`
+  y `/coach/report` encolan un job en la tabla `processing_jobs` y responden `{status:"queued"}`
   **solo cuando la variable de entorno `LENTE_PROCESSOR_QUEUE=1` está seteada**. Sin esa
   variable (desarrollo local) ejecutan directamente, como siempre.
 - **Worker externo** (`npm run worker`): un script standalone (node + tsx) que corre en una

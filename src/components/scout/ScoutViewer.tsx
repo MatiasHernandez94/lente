@@ -859,6 +859,14 @@ export function ScoutViewer({ video, initial }: ScoutViewerProps) {
             ? assignments.find((a) => a.trackId === selectedTrackId)?.name ?? `Jugador ${selectedTrackId + 1}`
             : null
         }
+        videoId={video.id}
+        onSeek={(timeS) => {
+          const videoEl = videoRef.current;
+          if (!videoEl) return;
+          videoEl.currentTime = timeS;
+          setCurrentTime(timeS);
+          void videoEl.play().catch(() => undefined);
+        }}
       />
 
       {error ? <p className="text-sm text-red-900">{error}</p> : null}

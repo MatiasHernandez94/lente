@@ -28,6 +28,17 @@ export function CoachChat({ videoId }: Props) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    void fetch(`/api/videos/${videoId}/coach`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((d) => {
+        if (d?.messages && Array.isArray(d.messages) && d.messages.length > 0) {
+          setMessages(d.messages);
+        }
+      })
+      .catch(() => undefined);
+  }, [videoId]);
+
   const sendMessage = async () => {
     const text = input.trim();
     if (!text || loading) return;
@@ -41,10 +52,7 @@ export function CoachChat({ videoId }: Props) {
       const res = await fetch(`/api/videos/${videoId}/coach`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          history: messages.slice(0, -1),
-        }),
+        body: JSON.stringify({ message: text }),
       });
 
       if (!res.ok) throw new Error("Error");

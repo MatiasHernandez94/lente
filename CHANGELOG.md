@@ -18,6 +18,37 @@ Registro de cambios del proyecto LENTE (plataforma de análisis deportivo). Form
 
 ### Añadido
 
+- **Asistente Técnico con IA real (coach táctico)**: el panel "Consulta al Asistente Técnico" es
+  ahora un coach deportivo que genera un informe táctico del video y responde consultas con
+  referencia al minuto exacto.
+  - **Informe táctico** (`generateCoachReportWithVision` en `src/lib/ai/video-agent.ts`): combina
+    fotogramas con visión (Gemini) + línea de tiempo de eventos del análisis deportivo y devuelve
+    `summary`, `positives` y `improvements`, cada uno con `time_s` (segundo exacto del video) o
+    `null`. Prompt en `gemini.ts` (modo equipo/individual, español rioplatense) con reglas para
+    citar momentos reales de la línea de tiempo.
+  - **Función pura `buildCoachTimeline`** en `src/lib/ai/coach.ts`: convierte eventos
+    (`events.events`), transiciones tácticas y riesgos de lesión del análisis en una línea de
+    tiempo `MM:SS` testeable (tests nuevos en `src/lib/execution/coach.test.ts`).
+  - **Nueva ruta** `GET/POST /api/videos/[id]/coach/report`: `GET` devuelve informe cacheado
+    (`cached`) o `queued`/`error`/`none`; `POST` genera (o encola con kind `coach-report` cuando
+    `LENTE_PROCESSOR_QUEUE=1`). Persiste en `data/sports-analysis/<video>.ai.json` bajo
+    `coach_report` (Storage + local).
+  - **Chat con IA real**: `POST /api/videos/[id]/coach` ahora usa Gemini (`generateCoachChatAnswer`)
+    con el informe + análisis + historial; si no hay API key se cae al fallback rule-based previo.
+  - **Cola/worker**: nuevo kind `coach-report` en `processing_jobs` (migración
+    `0016_coach_report_kind` amplía el CHECK constraint) procesado por el worker externo.
+  - **Frontend** (`src/components/scout/CoachAssistant.tsx`): bots de "Generar informe táctico",
+    muestra resumen + "Lo que estás haciendo bien" (verde) + "A mejorar" (ámbar) con chips
+    `min MM:SS` clicables que saltan el video al segundo exacto (seek vía `ScoutViewer`), y chat
+    funcional multi-turno.
+  - **Chat persistente**: la conversación con el coach se guarda por video (kind `coach_chat`
+    en el `.ai.json`, helpers `getCoachConversation`/`saveCoachConversation`). `GET
+    /api/videos/[id]/coach` recupera el historial y `POST` lo actualiza; `CoachAssistant` y
+    `CoachChat` cargan la conversación al montar y sobreviven a recargas/cambios de página
+    (máx. 60 mensajes guardados).
+  - QA real: informe y chat probados con el video `276548ce` (pádel) en modo directo y vía cola
+    → worker, con minutos reales citados por la IA.
+
 - **Cola de procesamiento pesado + worker externo** (v1 gratuita) para ejecutar la IA de visión
   y el pipeline deportivo Python fuera de Vercel (que tiene timeout de 60s y no tiene
   `yt-dlp`/`ffmpeg`/Python).

@@ -64,6 +64,42 @@ export interface ImprovementsResult {
   improvements: ImprovementItem[];
 }
 
+export interface CoachReportPoint {
+  title: string;
+  detail: string;
+  time_s: number | null;
+}
+
+export interface CoachReportResult {
+  summary: string;
+  positives: CoachReportPoint[];
+  improvements: CoachReportPoint[];
+}
+
+export interface CoachContext {
+  videoTitle: string;
+  sport: Sport;
+  mode: string;
+  durationSeconds: number | null;
+  metrics: { label: string; value: string; unit: string }[];
+  timeline: string;
+  limitations: string[];
+  frames: FrameImage[];
+}
+
+export interface CoachChatContext {
+  videoTitle: string;
+  sport: Sport;
+  mode: string;
+  durationSeconds: number | null;
+  metrics: { label: string; value: string; unit: string }[];
+  timeline: string;
+  limitations: string[];
+  report: CoachReportResult | null;
+  history: { role: "user" | "assistant"; content: string }[];
+  message: string;
+}
+
 export interface AIAnalysisInput {
   frames: FrameImage[];
   videoTitle: string;
@@ -87,4 +123,6 @@ export interface AIProvider {
   readonly name: string;
   detectSport(ctx: SportContext): Promise<SportDetectionResult>;
   generateImprovements(ctx: ImprovementsContext): Promise<ImprovementsResult>;
+  generateCoachReport(ctx: CoachContext): Promise<CoachReportResult>;
+  coachChat(ctx: CoachChatContext): Promise<string>;
 }

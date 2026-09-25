@@ -13,6 +13,100 @@ interface CoachContext {
   videoTitle: string;
 }
 
+/** Formatea segundos como "MM:SS". */
+export function formatClockTime(timeS: number): string {
+  const mins = Math.floor(timeS / 60);
+  const secs = Math.round(timeS % 60);
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+interface CoachEventLike {
+  time_s: number;
+  type: string;
+  [key: string]: unknown;
+}
+
+interface CoachAnalysisLike {
+  events?: {
+    events?: CoachEventLike[];
+  };
+  tactical?: {
+    transitions?: {
+      events?: CoachEventLike[];
+    };
+  };
+  fatigue?: {
+    players?: Record<string, { injury_risks?: Array<{ type: string; time_s: number; severity: string }> }>;
+  };
+}
+
+/**
+ * Construye una línea de tiempo legible (con marca MM:SS) a partir del análisis
+ * deportivo, para que la IA del coach pueda referenciar momentos exactos del video.
+ * Función pura: testeable sin red ni sistema de archivos.
+ */
+export function buildCoachTimeline(analysis: CoachAnalysisLike | null | undefined, maxEvents = 80): string {
+  if (!analysis) return "";
+
+  const lines: string[] = [];
+
+  const eventMap = new Map<string, string>();
+  if (analysis.events) {
+    const events = analysis.events.events ?? [];
+    for (const ev of events.slice(0, maxEvents)) {
+      eventMap.set(`E:${ev.time_s}:${ev.type}`, detailForEvent(ev));
+    }
+  }
+
+  if (analysis.tactical?.transitions?.events) {
+    for (const ev of analysis.tactical.transitions.events.slice(0, maxEvents)) {
+      const detail = ev.type === "counterattack" ? "contraataque" : String(ev.type ?? "transición");
+      eventMap.set(`T:${ev.time_s}:${detail}`, `[${formatClockTime(ev.time_s)}] ${detail} (transición)`);
+    }
+  }
+
+  if (analysis.fatigue?.players) {
+    for (const [, player] of Object.entries(analysis.fatigue.players)) {
+      for (const risk of player.injury_risks ?? []) {
+        if (typeof risk.time_s !== "number" || !risk.time_s) continue;
+        eventMap.set(
+          `R:${risk.time_s}:${risk.type}`,
+          `[${formatClockTime(risk.time_s)}] riesgo ${risk.type} (severidad ${risk.severity})`,
+        );
+      }
+    }
+  }
+
+  for (const ev of [...eventMap.values()].slice(0, maxEvents)) {
+    lines.push(ev);
+  }
+
+  lines.sort((a, b) => {
+    const timeA = timePrefixSeconds(a);
+    const timeB = timePrefixSeconds(b);
+    return timeA - timeB;
+  });
+
+  return lines.join("\n");
+}
+
+function detailForEvent(ev: CoachEventLike): string {
+  const time = `[${formatClockTime(ev.time_s)}]`;
+  const type = String(ev.type ?? "evento");
+  const extras: string[] = [];
+  if (ev.player_id != null) extras.push(`jugador ${ev.player_id}`);
+  if (typeof ev.speed_mps === "number") extras.push(`${ev.speed_mps.toFixed(1)} m/s`);
+  if (typeof ev.distance_m === "number") extras.push(`${ev.distance_m.toFixed(1)} m`);
+  const suffix = extras.length > 0 ? `: ${extras.join(", ")}` : "";
+  return `${time} ${type}${suffix}`;
+}
+
+function timePrefixSeconds(line: string): number {
+  const match = line.match(/^\[(\d+):(\d+)\]/);
+  if (!match) return 0;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
 export function buildCoachSystemPrompt(ctx: CoachContext): string {
   const sportName = ctx.sport === "general" ? "actividad física" : ctx.sport;
 

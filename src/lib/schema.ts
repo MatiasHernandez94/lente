@@ -99,7 +99,7 @@ export interface CorreccionConProfesor extends CorreccionRow {
   profesorName: string;
 }
 
-export type ProcessingJobKind = "detect-sport" | "improvements" | "sports";
+export type ProcessingJobKind = "detect-sport" | "improvements" | "sports" | "coach-report";
 export type ProcessingJobStatus = "pending" | "processing" | "done" | "error";
 
 export interface ProcessingJobRow {

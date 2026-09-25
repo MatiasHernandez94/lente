@@ -1,6 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
 import { AIQuotaError, type AIProvider } from "./types";
 import type {
+  CoachChatContext,
+  CoachContext,
+  CoachReportResult,
   FrameImage,
   ImprovementsContext,
   ImprovementsResult,
@@ -87,6 +90,52 @@ export class GeminiProvider implements AIProvider {
       });
       const text = (response.text ?? "").trim();
       return parseImprovementsResponse(text);
+    } catch (error) {
+      if (isQuotaError(error)) {
+        throw new AIQuotaError("quota", error instanceof Error ? error.message : "Cuota agotada");
+      }
+      throw error;
+    }
+  }
+
+  async generateCoachReport(ctx: CoachContext): Promise<CoachReportResult> {
+    try {
+      const prompt = buildCoachReportPrompt(ctx);
+      const response = await this.ai.models.generateContent({
+        model: this.visionModel,
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              ...ctx.frames.map((f) => toInlineData(f)),
+            ],
+          },
+        ],
+      });
+      const text = (response.text ?? "").trim();
+      return parseCoachReportResponse(text, ctx.durationSeconds);
+    } catch (error) {
+      if (isQuotaError(error)) {
+        throw new AIQuotaError("quota", error instanceof Error ? error.message : "Cuota agotada");
+      }
+      throw error;
+    }
+  }
+
+  async coachChat(ctx: CoachChatContext): Promise<string> {
+    try {
+      const prompt = buildCoachChatPrompt(ctx);
+      const response = await this.ai.models.generateContent({
+        model: this.agentModel,
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }],
+          },
+        ],
+      });
+      return (response.text ?? "").trim();
     } catch (error) {
       if (isQuotaError(error)) {
         throw new AIQuotaError("quota", error instanceof Error ? error.message : "Cuota agotada");
@@ -183,6 +232,134 @@ function parseImprovementsResponse(text: string): ImprovementsResult {
     .filter((i: { title: string; detail: string }) => i.title && i.detail)
     .slice(0, 5);
   return { summary, improvements };
+}
+
+function buildCoachReportPrompt(ctx: CoachContext): string {
+  const metricsBlock =
+    ctx.metrics.length > 0
+      ? ctx.metrics.map((m) => `- ${m.label}: ${m.value} ${m.unit}`).join("\n")
+      : "Sin métricas calculadas.";
+
+  const timelineBlock =
+    ctx.timeline.length > 0 ? ctx.timeline : "Sin eventos detectados con marca de tiempo.";
+
+  const limitationsBlock =
+    ctx.limitations.length > 0
+      ? ctx.limitations.map((l) => `- ${l}`).join("\n")
+      : "Sin limitaciones reportadas.";
+
+  return `Sos un Director Técnico y analista táctico de ${SPORT_LABEL[ctx.sport]} con mucha experiencia. Analizás el video del que recibís fotogramas y una línea de tiempo de eventos detectada automáticamente. Tu objetivo es dar un informe de coaching táctico completo y accionable.
+
+Deporte: ${SPORT_LABEL[ctx.sport]} (modo ${ctx.mode === "team" ? "equipo" : "individual"})
+Video: "${ctx.videoTitle}"
+Duración: ${ctx.durationSeconds ?? "desconocida"} segundos
+
+MÉTRICAS DETECTADAS:
+${metricsBlock}
+
+LÍNEA DE TIEMPO DE EVENTOS (minuto y tipo):
+${timelineBlock}
+
+LIMITACIONES / QUÉ NO SE PUDO MEDIR:
+${limitationsBlock}
+
+FOTOGRAMAS RECIBIDOS: acá están representados en orden con su marca de tiempo.
+
+Respondé EXACTAMENTE en JSON (sin markdown, sin texto extra):
+{"summary": "resumen de 2-3 oraciones del partido/sesión", "positives": [{"title": "corto", "detail": "explicación de la situación táctica y por qué es un punto fuerte", "time_s": segundos_enteros_o_null}], "improvements": [{"title": "corto", "detail": "explicación de qué hacer distinto, cómo y por qué", "time_s": segundos_enteros_o_null}]}
+
+Reglas:
+- 3 a 5 positives y 3 a 5 improvements.
+- En "time_s" usá SIEMPRE un segundo exacto que exista en la línea de tiempo de eventos (mm:ss → segundos), así el usuario puede ir a ese momento del video. Si una observación es general y no corresponde a un evento específico, poné null.
+- Basate SOLO en los fotogramas, las métricas y la línea de tiempo. No inventes jugadas que no están.
+- Sé específico y táctico: referite a lo que se ve (espacios, posiciones, parejas de pádel, cobertura del partner, presión, transiciones, desgaste físico). Ejemplo válido: "en el minuto 3:05 deberías haber quedado más cerrado con tu partner al fondo para no dejar corto el globo".
+- En español rioplatense, tono de entrenador directo pero constructivo.`;
+}
+
+function parseCoachReportResponse(text: string, durationSeconds: number | null): CoachReportResult {
+  const parsed = extractJson(text);
+  if (!parsed) {
+    throw new Error("La respuesta de IA no fue JSON válido para el informe del coach.");
+  }
+  const summary = String(parsed.summary ?? "Informe sin resumen.").trim();
+  const positives = sanitizeCoachPoints(parsed.positives, durationSeconds);
+  const improvements = sanitizeCoachPoints(parsed.improvements, durationSeconds);
+  return { summary, positives, improvements };
+}
+
+function sanitizeCoachPoints(
+  raw: unknown,
+  durationSeconds: number | null,
+): CoachReportResult["positives"] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item: Record<string, unknown>) => {
+      const title = String(item.title ?? "").trim();
+      const detail = String(item.detail ?? "").trim();
+      let time: number | null = null;
+      if (item.time_s != null) {
+        const n = parseInt(String(item.time_s), 10);
+        if (Number.isFinite(n) && n >= 0 && (durationSeconds == null || n < durationSeconds)) {
+          time = n;
+        }
+      }
+      return { title, detail, time_s: time };
+    })
+    .filter((p: CoachReportResult["positives"][number]) => p.title && p.detail)
+    .slice(0, 5);
+}
+
+function buildCoachChatPrompt(ctx: CoachChatContext): string {
+  const sportName = ctx.sport === "general" ? "actividad física" : SPORT_LABEL[ctx.sport];
+  const metricsBlock =
+    ctx.metrics.length > 0
+      ? ctx.metrics.map((m) => `- ${m.label}: ${m.value} ${m.unit}`).join("\n")
+      : "Sin métricas calculadas.";
+  const timelineBlock =
+    ctx.timeline.length > 0 ? ctx.timeline : "Sin eventos detectados con marca de tiempo.";
+
+  const reportBlock = ctx.report
+    ? `INFORME TÁCTICO GENERADO:
+RESUMEN: ${ctx.report.summary}
+COSAS QUE SE HACEN BIEN:
+${ctx.report.positives.map((p) => `- ${p.title} (${p.time_s != null ? formatCoachTime(p.time_s) : "general"}): ${p.detail}`).join("\n")}
+PARA MEJORAR:
+${ctx.report.improvements.map((p) => `- ${p.title} (${p.time_s != null ? formatCoachTime(p.time_s) : "general"}): ${p.detail}`).join("\n")}`
+    : "Aún no se generó un informe táctico. Respondé con lo que puedas deducir de los datos sin inventar.";
+
+  const historyBlock =
+    ctx.history.length > 0
+      ? ctx.history.map((h) => `${h.role === "user" ? "Usuario" : "Coach"}: ${h.content}`).join("\n")
+      : "Sin historial previo.";
+
+  return `Sos un coach deportivo virtual de Lente especializado en ${sportName}. Respondés en español rioplatense, como un entrenador directo pero motivador, y usás TUS datos para responder.
+
+Video: "${ctx.videoTitle}"
+CONVERSACIÓN ANTERIOR:
+${historyBlock}
+
+DATOS DEL ANÁLISIS:
+MÉTRICAS:
+${metricsBlock}
+
+LÍNEA DE TIEMPO:
+${timelineBlock}
+
+${reportBlock}
+
+CONSULTA DEL USUARIO: ${ctx.message}
+
+Reglas:
+- Respondé en 1-4 oraciones, concretas y accionables.
+- Cuando cites un momento del video, da la marca de tiempo en el formato "minuto MM" o "MM:SS" usando eventos reales.
+- Si no tenés el dato, decilo honestamente.
+- No menciones "según el informe" ni te refieras a estos metadatos técnicos: hablá como coach.`;
+}
+
+function formatCoachTime(timeS: number): string {
+  const mins = Math.floor(timeS / 60);
+  const secs = Math.round(timeS % 60);
+  return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
 function extractJson(text: string): Record<string, unknown> | null {
