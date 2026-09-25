@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -12,7 +12,28 @@ import {
   Users,
 } from "lucide-react";
 
-type AnalysisStatus = "loading" | "none" | "ready" | "error";
+const waitForAnalysis = async (
+  url: string,
+  intervalMs = 8000,
+  timeoutMs = 900_000,
+): Promise<boolean> => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data.status === "ready") return true;
+      if (data.status === "error") return false;
+    } catch {
+      // reintentar
+    }
+  }
+  return false;
+};
+
+type AnalysisStatus = "loading" | "none" | "ready" | "error" | "queued";
 
 interface SportAnalysis {
   video: {
@@ -63,18 +84,35 @@ interface Props {
   sport: string;
 }
 
-export function SportsAnalysisViewer({ videoId, sport }: Props) {
+export function SportsAnalysisViewer({ videoId, sport: _sport }: Props) {
   const [status, setStatus] = useState<AnalysisStatus>("loading");
   const [analysis, setAnalysis] = useState<SportAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const pollingStartedRef = useRef(false);
 
-  const fetchAnalysis = useCallback(async () => {
+  const loadAnalysis = useCallback(async () => {
     try {
       const res = await fetch(`/api/videos/${videoId}/sports`);
       if (!res.ok) throw new Error("Error fetching");
       const data = await res.json();
-      setStatus(data.status);
       if (data.analysis) setAnalysis(data.analysis);
+      if (data.status === "ready") {
+        pollingStartedRef.current = false;
+        setStatus("ready");
+        return;
+      }
+      if (data.status === "error") {
+        pollingStartedRef.current = false;
+        setError(data.error ?? "El análisis falló.");
+        setStatus("error");
+        return;
+      }
+      if (data.status === "queued") {
+        setStatus("queued");
+        return;
+      }
+      pollingStartedRef.current = false;
+      setStatus("none");
     } catch {
       setError("Error al cargar análisis");
       setStatus("error");
@@ -82,8 +120,27 @@ export function SportsAnalysisViewer({ videoId, sport }: Props) {
   }, [videoId]);
 
   useEffect(() => {
-    fetchAnalysis();
-  }, [fetchAnalysis]);
+    const task = setTimeout(() => {
+      void loadAnalysis();
+    }, 0);
+    return () => clearTimeout(task);
+  }, [loadAnalysis]);
+
+  useEffect(() => {
+    if (status !== "queued" || pollingStartedRef.current) return;
+    pollingStartedRef.current = true;
+    const timer = setTimeout(async () => {
+      const done = await waitForAnalysis(`/api/videos/${videoId}/sports`);
+      pollingStartedRef.current = false;
+      if (!done) {
+        setError("Tiempo de espera agotado mientras se procesaba el análisis.");
+        setStatus("error");
+        return;
+      }
+      void loadAnalysis();
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [status, videoId, loadAnalysis]);
 
   const startAnalysis = async () => {
     setStatus("loading");
@@ -91,6 +148,17 @@ export function SportsAnalysisViewer({ videoId, sport }: Props) {
       const res = await fetch(`/api/videos/${videoId}/sports`, { method: "POST" });
       if (!res.ok) throw new Error("Error starting");
       const data = await res.json();
+      if (data.status === "queued") {
+        setStatus("queued");
+        const done = await waitForAnalysis(`/api/videos/${videoId}/sports`);
+        if (!done) {
+          setError("Tiempo de espera agotado mientras se procesaba el análisis.");
+          setStatus("error");
+          return;
+        }
+        await loadAnalysis();
+        return;
+      }
       setStatus(data.status);
       if (data.analysis) setAnalysis(data.analysis);
     } catch {
@@ -99,11 +167,15 @@ export function SportsAnalysisViewer({ videoId, sport }: Props) {
     }
   };
 
-  if (status === "loading") {
+  if (status === "loading" || status === "queued") {
     return (
       <div className="border border-hairline bg-surface p-8 text-center">
         <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-ink/20 border-t-ink" />
-        <p className="text-sm text-muted">Procesando análisis deportivo...</p>
+        <p className="text-sm text-muted">
+          {status === "queued"
+            ? "Análisis en cola de procesamiento. Esto puede tardar varios minutos mientras el worker externo procesa el video…"
+            : "Procesando análisis deportivo..."}
+        </p>
       </div>
     );
   }

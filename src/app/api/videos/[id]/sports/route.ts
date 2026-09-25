@@ -7,6 +7,7 @@ import {
   startSportAnalysis,
   getSportAnalysis,
 } from "@/lib/sports/service";
+import { getActiveProcessingJob, isProcessorQueueEnabled, enqueueProcessingJob } from "@/lib/processor";
 
 export async function GET(request: NextRequest, ctx: RouteContext<"/api/videos/[id]/sports">): Promise<NextResponse> {
   try {
@@ -19,6 +20,17 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/videos/[
 
     const analysis = await getSportAnalysis(id);
     if (!analysis) {
+      const activeJob = await getActiveProcessingJob(id, "sports").catch(() => null);
+      if (activeJob) {
+        const jobError = activeJob.error;
+        if (jobError) {
+          return NextResponse.json({
+            status: "error",
+            error: String(jobError.message ?? "El análisis deportivo falló."),
+          });
+        }
+        return NextResponse.json({ status: "queued", jobId: activeJob.id });
+      }
       return NextResponse.json({ status: "none" });
     }
 
@@ -47,6 +59,11 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/videos/
       options = await request.json();
     } catch {
       // Use defaults
+    }
+
+    if (isProcessorQueueEnabled()) {
+      const job = await enqueueProcessingJob(id, "sports", { sample_fps: options.sample_fps ?? 5 });
+      return NextResponse.json({ status: "queued", jobId: job.id });
     }
 
     const analysis = await startSportAnalysis(video, options);

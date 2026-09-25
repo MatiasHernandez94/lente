@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "worker": "TSX_TSCONFIG_PATH=scripts/worker/tsconfig.json tsx scripts/worker/worker.ts",
     "lint": "eslint",
     "test": "node --experimental-strip-types --test src/lib/execution/*.test.ts"
   },
@@ -38,6 +39,7 @@
     "eslint-config-next": "16.3.3",
     "pg": "^8.23.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   },
   "allowScripts": {

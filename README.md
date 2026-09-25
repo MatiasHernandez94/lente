@@ -2,6 +2,40 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 Para un registro detallado de los cambios, consulte el [CHANGELOG.md](CHANGELOG.md).
 
+## Procesamiento pesado (IA + Python): cola de trabajos y worker
+
+Los análisis con modelo de visión (Gemini), la descarga de videos de YouTube (yt‑dlp) y
+el pipeline deportivo completo (Python/YOLO/ffmpeg) no corren en Vercel (timeout de 60s
+y sin binarios). Se implementa con una **cola de trabajos en Supabase**:
+
+- **App (Vercel)**: los endpoints `POST /api/videos/[id]/detectar-deporte`, `/mejoras` y
+  `/sports` encolan un job en la tabla `processing_jobs` y responden `{status:"queued"}`
+  **solo cuando la variable de entorno `LENTE_PROCESSOR_QUEUE=1` está seteada**. Sin esa
+  variable (desarrollo local) ejecutan directamente, como siempre.
+- **Worker externo** (`npm run worker`): un script standalone (node + tsx) que corre en una
+  máquina con `yt-dlp`, `ffmpeg-static`, Python y las API keys de IA. Pollea la cola,
+  reclama el job más antiguo, descarga/procesa con los mismos módulos de `src/lib`
+  (descarga YouTube → Storage → Gemini → pipeline Python), y escribe los resultados a
+  Supabase Storage/DB (`data/sports-analysis/*.{json,ai.json}` → bucket `analyses`).
+- **Frontend**: cuando una acción responde `queued`, los componentes
+  (`AIInsightsPanel`, `SportsAnalysisViewer`) hacen polling al endpoint `GET` hasta que el
+  resultado está `ready` (o `error`).
+
+Cómo correr el worker local (desarrollador):
+
+```bash
+npm run dev            # la app en localhost:3000 (sin LENTE_PROCESSOR_QUEUE → modo directo)
+npm run worker         # procesa la cola: descarga + IA + análisis Python
+```
+
+Para habilitar el modo cola en Vercel: definir `LENTE_PROCESSOR_QUEUE=1` en el proyecto y
+correr `npm run worker` en la máquina del desarrollador mientras se procesan análisis.
+
+> **v1 gratuita → opción paga**: esta v1 usa el worker en la máquina del desarrollador
+> (gratis, sin exponer puertos). La misma tabla de cola y el mismo `scripts/worker/` se
+> pueden desplegar después en un VPS/worker en la nube (opción paga) sin cambiar la lógica:
+> el worker solo conoce Supabase por URL + service role.
+
 ## Getting Started
 
 First, run the development server:

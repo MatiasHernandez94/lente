@@ -18,6 +18,33 @@ Registro de cambios del proyecto LENTE (plataforma de análisis deportivo). Form
 
 ### Añadido
 
+- **Cola de procesamiento pesado + worker externo** (v1 gratuita) para ejecutar la IA de visión
+  y el pipeline deportivo Python fuera de Vercel (que tiene timeout de 60s y no tiene
+  `yt-dlp`/`ffmpeg`/Python).
+  - **Migración `0015_processing_jobs`**: tabla `processing_jobs` (video_id, kind, payload,
+    status `pending|processing|done|error`, attempts, timestamps) con índices y RLS cerrada
+    (solo service role).
+  - **Módulo `src/lib/processor.ts`**: `enqueueProcessingJob`, `getActiveProcessingJob`,
+    `claimNextPendingJob` (con `reviveStaleJobs` para workers caídos) y `finishProcessingJob`.
+  - **Rutas**: `POST /detectar-deporte`, `/mejoras` y `/sports` encolan y responden
+    `{status:"queued"}` cuando `LENTE_PROCESSOR_QUEUE=1`; en desarrollo (sin variable) ejecutan
+    directo como antes. `GET` de las tres ahora refleja `queued`/`error` además de
+    `none`/`ready`/resultado.
+  - **Worker** `scripts/worker/worker.ts` (node + `tsx`, devDependency recién agregada): pollea
+    la cola, reclama jobs, descarga (YouTube/Storage), corre Gemini + `startSportAnalysis`
+    (Python) con los mismos módulos de `src/lib` y persiste a Storage/DB. Solo conoce Supabase
+    (URL + service role), sin exponer puertos.
+  - **Frontend**: `AIInsightsPanel` y `SportsAnalysisViewer` hacen polling automático cuando una
+    acción responde `queued` hasta obtener `ready`/`error` (con timeout amigable).
+  - QA real: con el video de YouTube del usuario (`ZaOKywmvZiw`) la detección IA (`padel`),
+    mejoras y el análisis completo (580s, 3765 frames, 157 eventos) corrieron vía cola → worker
+    → Storage → GET, y el modo directo local quedó intacto.
+  - Documentado en `README.md`: la **v1 usa el worker en la máquina del desarrollador (gratis)**;
+    la misma cola y worker se pueden desplegar después en un **VPS/worker en la nube (opción
+    paga)** sin cambios de lógica.
+
+### Añadido
+
 - Nuevo módulo de **análisis de ejecución de ejercicios** (movilidad / fuerza) a partir de video.
   - **Motor de evaluación** (`src/lib/execution/`): catálogo de 10 ejercicios
     (`exercises.ts`), geometría de ángulos articulares, control de movimiento, detección de

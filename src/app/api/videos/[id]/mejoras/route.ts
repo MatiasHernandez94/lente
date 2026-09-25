@@ -10,6 +10,7 @@ import {
   saveVideoAIInsight,
 } from "@/lib/ai/video-agent";
 import { ApiServiceError } from "@/lib/services/videoService";
+import { getActiveProcessingJob, isProcessorQueueEnabled, enqueueProcessingJob } from "@/lib/processor";
 
 export interface ImprovementsApiResponse {
   summary: string;
@@ -33,8 +34,10 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/videos/
     if (!video || video.userId !== user.id) {
       throw new ApiServiceError(404, "El video no existe o no le corresponde.");
     }
-    if (video.sourceType === "youtube") {
-      throw new ApiServiceError(400, "El agente de mejoras requiere el video local; no está disponible para videos de YouTube.");
+
+    if (isProcessorQueueEnabled()) {
+      const job = await enqueueProcessingJob(id, "improvements");
+      return NextResponse.json({ status: "queued", jobId: job.id });
     }
 
     const analysis = await getSportAnalysis(id);
@@ -64,6 +67,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/videos/[
       throw new ApiServiceError(404, "El video no existe o no le corresponde.");
     }
 
+    const activeJob = await getActiveProcessingJob(id, "improvements").catch(() => null);
     const stored = await getVideoAIInsight(id);
     const improvements = stored?.improvements;
     if (improvements) {
@@ -82,6 +86,19 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/videos/[
         cached: true,
       };
       return NextResponse.json(body);
+    }
+
+    if (activeJob) {
+      const jobError = activeJob.error;
+      if (jobError) {
+        return NextResponse.json({
+          status: "error",
+          error: String(jobError.message ?? "El análisis con IA falló."),
+          kind: String(jobError.kind ?? "error"),
+          detail: jobError.detail ? String(jobError.detail) : null,
+        });
+      }
+      return NextResponse.json({ status: "queued", jobId: activeJob.id });
     }
 
     return NextResponse.json({ status: "none" });

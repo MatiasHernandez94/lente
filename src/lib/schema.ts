@@ -98,3 +98,20 @@ export interface CorreccionRow {
 export interface CorreccionConProfesor extends CorreccionRow {
   profesorName: string;
 }
+
+export type ProcessingJobKind = "detect-sport" | "improvements" | "sports";
+export type ProcessingJobStatus = "pending" | "processing" | "done" | "error";
+
+export interface ProcessingJobRow {
+  id: string;
+  videoId: string;
+  kind: ProcessingJobKind;
+  payload: Record<string, unknown> | null;
+  status: ProcessingJobStatus;
+  error: Record<string, unknown> | null;
+  attempts: number;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
