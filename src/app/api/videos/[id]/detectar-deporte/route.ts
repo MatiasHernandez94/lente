@@ -14,9 +14,6 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/videos/
     if (!video || video.userId !== user.id) {
       throw new ApiServiceError(404, "El video no existe o no le corresponde.");
     }
-    if (video.sourceType === "youtube") {
-      throw new ApiServiceError(400, "La detección por visión requiere el video local; no está disponible para videos de YouTube.");
-    }
 
     if (!user || user.rol !== "profesor") {
       // Permitimos a cualquier usuario con su propio video, pero la detección

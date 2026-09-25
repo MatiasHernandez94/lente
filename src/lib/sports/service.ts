@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import type { VideoRow } from "@/lib/schema";
 import { ApiServiceError } from "@/lib/services/videoService";
 import { downloadVideoFromStorage, readAnalysisFromStorage, saveAnalysisToStorage } from "@/lib/videos/storage";
+import { downloadYouTubeVideo } from "@/lib/videos/youtube";
 
 const execFileAsync = promisify(execFile);
 const SCRIPTS_DIR = join(process.cwd(), "scripts", "sports");
@@ -154,10 +155,11 @@ export interface SportAnalysisResult {
 }
 
 async function resolveVideoPath(video: VideoRow): Promise<string> {
-  if (video.sourceType === "youtube") {
-    throw new ApiServiceError(400, "El análisis completo aún no está disponible para videos de YouTube.");
-  }
   const sourceRef = video.sourceRef as string;
+  if (video.sourceType === "youtube") {
+    // El análisis completo corre sobre el archivo: descargamos el video de YouTube.
+    return downloadYouTubeVideo(sourceRef, video.id);
+  }
   const localPath = join(UPLOADS_DIR, sourceRef);
   if (existsSync(localPath)) {
     return localPath;

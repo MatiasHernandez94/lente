@@ -10,6 +10,7 @@ import { AIQuotaError, type AIProvider } from "./providers/types";
 import { getAIProviderRouter } from "./providers/router";
 import type { ImprovementsResult } from "./providers/types";
 import { downloadVideoFromStorage, readAnalysisFromStorage, saveAnalysisToStorage } from "@/lib/videos/storage";
+import { downloadYouTubeVideo } from "@/lib/videos/youtube";
 
 const UPLOADS_DIR = join(process.cwd(), "data", "uploads");
 const AI_RESULTS_DIR = join(process.cwd(), "data", "sports-analysis");
@@ -36,11 +37,17 @@ export interface SportVisionResult {
   provider: string;
 }
 
-/** Obtiene la ruta local del video subido (no YouTube), descargando de Storage si hace falta. */
+/** Obtiene la ruta local del video (descargándolo de Storage o YouTube si hace falta). */
 async function resolveLocalVideo(video: VideoRow): Promise<string | null> {
-  if (video.sourceType === "youtube") return null;
   const ref = video.sourceRef;
   if (!ref) return null;
+  if (video.sourceType === "youtube") {
+    try {
+      return await downloadYouTubeVideo(ref, video.id, 60);
+    } catch {
+      return null;
+    }
+  }
   const filePath = join(UPLOADS_DIR, ref);
   if (existsSync(filePath)) return filePath;
 
