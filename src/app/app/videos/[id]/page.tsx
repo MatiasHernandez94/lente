@@ -86,21 +86,15 @@ export default async function VideoDetailPage({ params, searchParams }: DetailPa
       </header>
 
       {/* Unified analysis view */}
-      {videoUrl ? (
-        <VideoInsights
-          videoId={video.id}
-          videoTitle={video.title}
-          videoUrl={videoUrl}
-          sport={video.sport}
-          initialSeconds={hasClip ? initialSeconds : undefined}
-        />
-      ) : (
-        <div className="border border-hairline bg-surface px-6 py-10 text-center">
-          <p className="text-sm text-muted">
-            Video de YouTube — el análisis deportivo requiere un archivo de video local.
-          </p>
-        </div>
-      )}
+      <VideoInsights
+        videoId={video.id}
+        videoTitle={video.title}
+        videoUrl={videoUrl}
+        sourceType={video.sourceType}
+        sourceRef={video.sourceRef}
+        sport={video.sport}
+        initialSeconds={hasClip ? initialSeconds : undefined}
+      />
 
       <section>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">

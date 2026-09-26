@@ -48,6 +48,11 @@ Registro de cambios del proyecto LENTE (plataforma de análisis deportivo). Form
     (máx. 60 mensajes guardados).
   - QA real: informe y chat probados con el video `276548ce` (pádel) en modo directo y vía cola
     → worker, con minutos reales citados por la IA.
+  - **Fix regresión videos de YouTube**: la página de detalle `/app/videos/[id]` y la de
+    corrección del profesor bloqueaban los videos de YouTube con "el análisis deportivo requiere
+    un archivo de video local" a pesar de que el pipeline IA/Python ya los soportaba. Ahora
+    renderizan el embed (`youtube-nocookie.com/embed`) vía `VideoHero` de `VideoInsights`
+    (recibe `sourceType`/`sourceRef`) y muestran el panel de análisis completo.
 
 - **Cola de procesamiento pesado + worker externo** (v1 gratuita) para ejecutar la IA de visión
   y el pipeline deportivo Python fuera de Vercel (que tiene timeout de 60s y no tiene

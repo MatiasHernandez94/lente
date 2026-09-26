@@ -65,11 +65,13 @@ export default async function CorreccionVideoPage({ params, searchParams }: Corr
 
       <div className="grid gap-8 lg:grid-cols-[1.6fr_1fr]">
         <div className="space-y-6">
-          {videoUrl ? (
+          {videoUrl || video.sourceType === "youtube" ? (
             <VideoInsights
               videoId={video.id}
               videoTitle={video.title}
               videoUrl={videoUrl}
+              sourceType={video.sourceType}
+              sourceRef={video.sourceRef}
               sport={video.sport}
               initialSeconds={hasClip ? initialSeconds : undefined}
             />
