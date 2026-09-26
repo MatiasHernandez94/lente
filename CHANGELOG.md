@@ -53,6 +53,8 @@ Registro de cambios del proyecto LENTE (plataforma de análisis deportivo). Form
     un archivo de video local" a pesar de que el pipeline IA/Python ya los soportaba. Ahora
     renderizan el embed (`youtube-nocookie.com/embed`) vía `VideoHero` de `VideoInsights`
     (recibe `sourceType`/`sourceRef`) y muestran el panel de análisis completo.
+  - **Producción**: definida `NEXT_PUBLIC_APP_URL=https://lente-six.vercel.app` en Vercel
+    production (enlaces de correcciones/callback de auth ya no apuntan a `localhost:3000`).
 
 - **Cola de procesamiento pesado + worker externo** (v1 gratuita) para ejecutar la IA de visión
   y el pipeline deportivo Python fuera de Vercel (que tiene timeout de 60s y no tiene
