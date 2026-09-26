@@ -176,8 +176,12 @@ async function resolveVideoPath(video: VideoRow): Promise<string> {
 }
 
 function getOutputPath(videoId: string): string {
-  if (!existsSync(RESULTS_DIR)) {
-    mkdirSync(RESULTS_DIR, { recursive: true });
+  try {
+    if (!existsSync(RESULTS_DIR)) {
+      mkdirSync(RESULTS_DIR, { recursive: true });
+    }
+  } catch {
+    // Entorno de solo lectura (Vercel): el resultado solo se persiste a Storage.
   }
   return join(RESULTS_DIR, `${videoId}.json`);
 }
