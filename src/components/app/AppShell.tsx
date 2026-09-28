@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListVideo, Target, Plus, Radio, LogOut, User, GraduationCap } from "lucide-react";
+import { LayoutDashboard, ListVideo, Target, Plus, Radio, LogOut, User, GraduationCap, Activity } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { logout } from "@/app/actions/auth";
 import type { UserRol } from "@/lib/schema";
@@ -22,10 +22,13 @@ const NAV_ITEMS = [
 ];
 
 const PROFESOR_NAV_ITEM = { href: "/app/profesor", label: "Alumnos", icon: GraduationCap };
+const OPERACIONES_NAV_ITEM = { href: "/app/profesor/operaciones", label: "Operaciones", icon: Activity };
 
 export function AppShell({ userName, userRol, unreadAlumnos = 0, children }: AppShellProps) {
   const pathname = usePathname();
-  const navItems = userRol === "profesor" ? [...NAV_ITEMS.slice(0, 1), PROFESOR_NAV_ITEM, ...NAV_ITEMS.slice(1)] : NAV_ITEMS;
+  const navItems = userRol === "profesor"
+    ? [NAV_ITEMS[0], OPERACIONES_NAV_ITEM, PROFESOR_NAV_ITEM, ...NAV_ITEMS.slice(1)]
+    : NAV_ITEMS;
 
   function Badge() {
     if (unreadAlumnos === 0) return null;

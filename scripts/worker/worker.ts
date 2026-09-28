@@ -1,7 +1,7 @@
 import "server-only";
 import { readFileSync } from "node:fs";
 import { getVideoById } from "@/lib/repo";
-import { claimNextPendingJob, finishProcessingJob } from "@/lib/processor";
+import { claimNextPendingJob, finishProcessingJob, isRetryableError, MAX_JOB_ATTEMPTS, requeueProcessingJob } from "@/lib/processor";
 import { AIActionError, detectSportWithVision, generateCoachReportWithVision, generateImprovementsWithVision, saveVideoAIInsight } from "@/lib/ai/video-agent";
 
 // ── Env loading ────────────────────────────────────────────────────────────────
@@ -36,14 +36,31 @@ function errorPayload(error: unknown): Record<string, unknown> {
     return { message: error.message, kind: error.kind, detail: error.detail ?? null };
   }
   const message = error instanceof Error ? error.message : String(error);
-  return { message, kind: "internal", detail: null };
+  const customKind = error instanceof Error ? (error as Error & { kind?: string }).kind : undefined;
+  return { message, kind: customKind ?? "internal", detail: null };
+}
+
+async function sendAlert(message: string): Promise<void> {
+  const url = process.env.LENTE_ALERTS_WEBHOOK_URL;
+  if (!url) return;
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: message }),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (err) {
+    console.error("[worker] No se pudo enviar la alerta:", err);
+  }
 }
 
 async function processJob(job: { id: string; videoId: string; kind: string; payload?: Record<string, unknown> | null }) {
   const video = await getVideoById(job.videoId);
   if (!video) {
-    await finishProcessingJob(job.id, "error", { message: "El video no existe.", kind: "video_unavailable", detail: null });
-    return;
+    const error = new Error("El video no existe.");
+    (error as Error & { kind?: string }).kind = "video_unavailable";
+    throw error;
   }
 
   if (job.kind === "detect-sport") {
@@ -101,9 +118,18 @@ export async function tick() {
   } catch (error) {
     console.error(`[worker] ✗ ${job.kind} (${job.videoId}):`, error);
     const payload = errorPayload(error);
-    await finishProcessingJob(job.id, "error", payload).catch((e) => {
+    const willRetry = job.attempts < MAX_JOB_ATTEMPTS && isRetryableError(String(payload.kind ?? ""));
+    try {
+      if (willRetry) {
+        await requeueProcessingJob(job.id, payload, job.attempts);
+        console.log(`[worker] ↻ ${job.kind} (${job.videoId}) reintento ${job.attempts}/${MAX_JOB_ATTEMPTS}`);
+      } else {
+        await finishProcessingJob(job.id, "error", payload);
+        await sendAlert(`❌ Lente: fallo final del análisis "${job.kind}" (video ${job.videoId}) después de ${job.attempts} intentos.\n${String(payload.message ?? payload.kind ?? "error")}`);
+      }
+    } catch (e) {
       console.error("[worker] No se pudo guardar el error del job:", e);
-    });
+    }
   }
 }
 

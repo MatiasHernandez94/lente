@@ -1,6 +1,7 @@
 import "server-only";
 import { getClient } from "./db";
 import type { ProcessingJobKind, ProcessingJobRow, ProcessingJobStatus } from "./schema";
+import { retryDelayMs } from "./retry";
 
 export const PROCESSOR_QUEUE_FLAG = "LENTE_PROCESSOR_QUEUE";
 
@@ -13,7 +14,9 @@ export function processorQueueEnabled(): boolean {
 }
 
 const JOB_COLUMNS =
-  "id, video_id, kind, payload, status, error, attempts, created_at, updated_at, started_at, finished_at";
+  "id, video_id, kind, payload, status, error, attempts, created_at, updated_at, started_at, finished_at, run_after";
+
+export { isRetryableError, MAX_JOB_ATTEMPTS, retryDelayMs } from "./retry";
 
 function parseJob(data: Record<string, unknown>): ProcessingJobRow {
   return {
@@ -28,6 +31,7 @@ function parseJob(data: Record<string, unknown>): ProcessingJobRow {
     updatedAt: String(data.updated_at),
     startedAt: data.started_at ? String(data.started_at) : null,
     finishedAt: data.finished_at ? String(data.finished_at) : null,
+    runAfter: data.run_after ? String(data.run_after) : null,
   };
 }
 
@@ -83,13 +87,15 @@ async function reviveStaleJobs(maxMinutes = 30): Promise<void> {
   }
 }
 
-/** Reclama el job pending más antiguo y lo marca como processing. */
+/** Reclama el job pending más antiguo (cuya run_after ya pasó) y lo marca como processing. */
 export async function claimNextPendingJob(): Promise<ProcessingJobRow | null> {
   await reviveStaleJobs();
+  const now = new Date().toISOString();
   const { data: next, error: selectError } = await getClient()
     .from("processing_jobs")
     .select("id, attempts")
     .eq("status", "pending")
+    .or(`run_after.is.null,run_after.lte.${now}`)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -110,6 +116,49 @@ export async function claimNextPendingJob(): Promise<ProcessingJobRow | null> {
     .single();
   if (error) throw new Error(`claimNextPendingJob.update: ${error.message}`);
   return parseJob(data);
+}
+
+/**
+ * Reencola un job que falló con un error transitorio: vuelve a pending con un
+ * retraso (run_after) calculado por backoff exponencial según los intentos ya
+ * usados, y registra el último error en la columna error para diagnóstico.
+ */
+export async function requeueProcessingJob(
+  id: string,
+  error: Record<string, unknown> | null,
+  attemptsUsed: number,
+): Promise<void> {
+  const runAfter = new Date(Date.now() + retryDelayMs(attemptsUsed)).toISOString();
+  const { error: updateError } = await getClient()
+    .from("processing_jobs")
+    .update({
+      status: "pending",
+      error,
+      run_after: runAfter,
+      started_at: null,
+      finished_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (updateError) throw new Error(`requeueProcessingJob: ${updateError.message}`);
+}
+
+/** Re-intenta manualmente un job fallido: resetea intentos y lo vuelve a pending ya. */
+export async function requeueFailedJobNow(id: string): Promise<void> {
+  const { error } = await getClient()
+    .from("processing_jobs")
+    .update({
+      status: "pending",
+      attempts: 0,
+      error: null,
+      run_after: null,
+      started_at: null,
+      finished_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("status", "error");
+  if (error) throw new Error(`requeueFailedJobNow: ${error.message}`);
 }
 
 /** Marca un job como done o error. */

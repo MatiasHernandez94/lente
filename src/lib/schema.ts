@@ -114,4 +114,5 @@ export interface ProcessingJobRow {
   updatedAt: string;
   startedAt: string | null;
   finishedAt: string | null;
+  runAfter: string | null;
 }

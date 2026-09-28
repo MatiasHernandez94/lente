@@ -18,6 +18,20 @@ Registro de cambios del proyecto LENTE (plataforma de análisis deportivo). Form
 
 ### Añadido
 
+- **Panel de Operaciones** (solo profesor): nueva sección `/app/profesor/operaciones` con estado de la
+  cola de procesamiento (jobs pendientes/procesando/completados/error), videos totales, trabajos de los
+  últimos 7 días, tiempo medio por trabajo, tabla de jobs recientes y botón **Re-intentar** para forzar
+  el reprocesamiento manual de un trabajo fallido. Soportado por `GET /api/ops/jobs` y
+  `POST /api/ops/jobs/[jobId]/requeue`.
+- **Reintento automático con backoff** en la cola: los análisis que fallan por errores transitorios
+  (quota de IA, red, recursos) se reencolan automáticamente hasta 3 intentos con backoff exponencial
+  (30 s → 1 min → 2 min) en lugar de ir directo a error. Los fallos permanentes
+  (`video_unavailable`, `unknown_job_kind`, `no_sport_detected`) se marcan como error directamente.
+  Funciones puras en `src/lib/retry.ts` con tests.
+- **Alerta opcional por webhook** en fallos finales del worker: si se define `LENTE_ALERTS_WEBHOOK_URL`,
+  el worker envía un POST JSON (`{ text }`) cuando un análisis falla definitivamente (útil para
+  Telegram/alerta de operaciones).
+
 - **Asistente Técnico con IA real (coach táctico)**: el panel "Consulta al Asistente Técnico" es
   ahora un coach deportivo que genera un informe táctico del video y responde consultas con
   referencia al minuto exacto.
