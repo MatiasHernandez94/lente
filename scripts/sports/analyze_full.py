@@ -12,18 +12,19 @@ Uso:
 import sys
 import json
 import argparse
+import os
 from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
-from detect_players import process_video
+from detect_players import process_video, write_progress
 from sport_specific import run_sport_specific_analysis
 
 TEAM_SPORTS = {"futbol", "padel", "voleibol", "baloncesto"}
 SOLO_SPORTS = {"general"}
 
 
-def run_full_analysis(video_path, output_path=None, sample_fps=5, sport="general"):
+def run_full_analysis(video_path, output_path=None, sample_fps=5, sport="general", progress_path=None):
     start_time = datetime.now()
 
     print("=" * 60)
@@ -31,10 +32,14 @@ def run_full_analysis(video_path, output_path=None, sample_fps=5, sport="general
     print(f"Sport: {sport}")
     print("=" * 60)
 
-    # Phase 1: Player Detection + Tracking
+    # Phase 1: Player Detection + Tracking (publica su propio progreso por frame)
     print("\n[Phase 1] Detecting people and tracking...")
     tracking_path = str(Path(video_path).with_suffix(".tracking.json"))
-    tracking_data = process_video(video_path, tracking_path, sample_fps)
+    # El muestreo de fotogramas ocupa la mayor parte del tiempo; las fases
+    # siguientes se exprimen como fracciones del 100% para que la barra no se
+    # quede clavada en 100% mientras sigue trabajando.
+    tracking_data = process_video(video_path, tracking_path, sample_fps, progress_path)
+    write_progress(progress_path, "Calculando métricas del deporte", 92, 100)
 
     # Count detected people and max concurrent per frame
     detected_ids = set()
@@ -54,6 +59,7 @@ def run_full_analysis(video_path, output_path=None, sample_fps=5, sport="general
     sport_specific = run_sport_specific_analysis(tracking_data, sport)
 
     if is_solo:
+        write_progress(progress_path, "Calculando métricas del deporte", 92, 100)
         print(f"\n[Solo mode] {person_count} person detected → individual activity analysis")
         from solo_activity import run_solo_analysis
         solo_result = run_solo_analysis(tracking_data)
@@ -84,6 +90,7 @@ def run_full_analysis(video_path, output_path=None, sample_fps=5, sport="general
         from tactical_analysis import run_tactical_analysis
         from detect_fatigue import run_fatigue_detection
 
+        write_progress(progress_path, "Calculando métricas del deporte", 92, 100)
         with ThreadPoolExecutor(max_workers=3) as executor:
             future_events = executor.submit(detect_events, tracking_data=tracking_data)
             future_tactical = executor.submit(run_tactical_analysis, tracking_data)
@@ -121,6 +128,8 @@ def run_full_analysis(video_path, output_path=None, sample_fps=5, sport="general
     if output_path is None:
         output_path = str(Path(video_path).with_suffix(".analysis.json"))
 
+    write_progress(progress_path, "Guardando resultado", 100, 100)
+
     with open(output_path, "w") as f:
 
         def sanitize(obj):
@@ -129,6 +138,15 @@ def run_full_analysis(video_path, output_path=None, sample_fps=5, sport="general
             return obj
 
         json.dump(output, f, separators=(',', ':'), default=sanitize)
+
+    # El archivo de progreso es de un solo uso: se borra al terminar para que un
+    # analisis posterior no lea un progreso viejo. La UI pasa a "listo" en cuanto
+    # el worker marca el job como done.
+    if progress_path:
+        try:
+            os.remove(progress_path)
+        except OSError:
+            pass
 
     print("\n" + "=" * 60)
     print("Analysis Complete!")
@@ -146,9 +164,10 @@ def main():
     parser.add_argument("--output", "-o", help="Output JSON path")
     parser.add_argument("--sport", default="general", help="Sport type (general, futbol, padel, voleibol, baloncesto)")
     parser.add_argument("--sample-fps", type=float, default=5, help="Frames per second to process (default: 5)")
+    parser.add_argument("--progress", help="Path where to publish progress JSON for the UI")
     args = parser.parse_args()
 
-    run_full_analysis(args.video, args.output, args.sample_fps, args.sport)
+    run_full_analysis(args.video, args.output, args.sample_fps, args.sport, args.progress)
 
 
 if __name__ == "__main__":

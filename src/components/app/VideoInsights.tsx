@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { youtubeEmbedUrl } from "@/components/analysis/VideoFrame";
 import {
   Activity,
@@ -109,8 +109,48 @@ interface SportsData {
   processing_time_s: number;
 }
 
-type AnalysisStatus = "loading" | "none" | "ready" | "error";
+type AnalysisStatus = "loading" | "queued" | "none" | "ready" | "error";
 type ToolTab = "none" | "coach" | "okrs" | "ai";
+
+const POLL_MS = 3000;
+
+/** Progreso que publica el worker mientras analiza (ver src/lib/job-progress.ts). */
+interface JobProgress {
+  pct?: number | null;
+  stage?: string | null;
+  framesDone?: number | null;
+  framesTotal?: number | null;
+}
+
+/**
+ * Segundos transcurridos desde `startedAt`. El estado solo se actualiza desde
+ * callbacks del temporizador (nunca de forma sincrónica en el efecto) porque el
+ * reloj se lee en un callback, no durante el render.
+ */
+function useElapsed(startedAt: number | null): number | null {
+  const [elapsed, setElapsed] = useState<number | null>(null);
+  useEffect(() => {
+    if (startedAt == null) return;
+    const compute = () =>
+      setElapsed(Math.max(0, Math.round((Date.now() - startedAt) / 1000)));
+    const first = setTimeout(compute, 0);
+    const id = setInterval(compute, 10_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
+  }, [startedAt]);
+  return startedAt == null ? null : elapsed;
+}
+
+/** Estima el tiempo restante a partir del porcentaje ya avanzado. */
+function estimateRemaining(elapsedSec: number, pct: number): string {
+  if (pct <= 0) return "…";
+  const total = (elapsedSec / pct) * 100;
+  const rest = Math.max(0, Math.round(total - elapsedSec));
+  if (rest < 60) return `${rest} s`;
+  return `${Math.ceil(rest / 60)} min`;
+}
 
 interface Props {
   videoId: string;
@@ -128,6 +168,14 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourc
   const [error, setError] = useState<string | null>(null);
   const [toolTab, setToolTab] = useState<ToolTab>("none");
   const [polling, setPolling] = useState(true);
+  const [progress, setProgress] = useState<JobProgress | null>(null);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  // Ref (no estado) para bloquear el doble envío: setState es asíncrono y dos
+  // clics rápidos disparaban dos POST antes del re-render.
+  const submitting = useRef(false);
+  // Incrementar reinicia el efecto de polling (p. ej. tras encolar un análisis).
+  const [pollNonce, setPollNonce] = useState(0);
+  const elapsed = useElapsed(startedAt);
 
   const fetchAnalysis = useCallback(async () => {
     try {
@@ -136,48 +184,109 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourc
       const json = await res.json();
       setStatus(json.status);
       if (json.analysis) setData(json.analysis);
+      if (json.progress) setProgress(json.progress);
+      if (json.queuedAt) setStartedAt(Date.parse(json.queuedAt));
       return json.status as AnalysisStatus;
     } catch {
       setError("Error al cargar el análisis");
       setStatus("error");
-      return "error";
+      return "error" as AnalysisStatus;
     }
   }, [videoId]);
 
+  /**
+   * Consulta el estado del análisis y sigue polling mientras esté en cola o en
+   * curso. Al montar se usa para detectar un trabajo ya encolado (p. ej. tras
+   * recargar la página); al pulsar "Iniciar" se reinicia con `pollNonce`.
+   */
   useEffect(() => {
     let cancelled = false;
-    let attempts = 0;
-    const MAX_ATTEMPTS = 8;
-    const POLL_MS = 3000;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let noneSeen = 0;
 
-    const poll = async () => {
+    const tick = async () => {
       const result = await fetchAnalysis();
-      attempts++;
-      if (!cancelled && result === "none" && attempts < MAX_ATTEMPTS) {
-        setTimeout(poll, POLL_MS);
-      } else if (!cancelled) {
-        setPolling(false);
+      if (cancelled) return;
+      if (result === "queued" || result === "loading") {
+        timer = setTimeout(tick, POLL_MS);
+        return;
       }
+      if (result === "none") {
+        noneSeen += 1;
+        if (noneSeen < 6) {
+          timer = setTimeout(tick, POLL_MS);
+          return;
+        }
+      }
+      setPolling(false);
     };
 
-    poll();
-    return () => { cancelled = true; };
-  }, [fetchAnalysis]);
+    void tick();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [fetchAnalysis, pollNonce]);
 
   const startAnalysis = async () => {
+    if (submitting.current) return;
+    submitting.current = true;
     setStatus("loading");
     setError(null);
+    setProgress(null);
+    setStartedAt(Date.now());
     try {
       const res = await fetch(`/api/videos/${videoId}/sports`, { method: "POST" });
       if (!res.ok) throw new Error("Error");
       const json = await res.json();
       setStatus(json.status);
       if (json.analysis) setData(json.analysis);
+      if (json.progress) setProgress(json.progress);
+      if (json.queuedAt) setStartedAt(Date.parse(json.queuedAt));
+      // La cola puede tardar: reiniciamos el polling hasta que termine.
+      if (json.status === "queued" || json.status === "loading") {
+        setPolling(true);
+        setPollNonce((n) => n + 1);
+      } else {
+        setPolling(false);
+      }
     } catch {
       setError("Error al iniciar el análisis");
       setStatus("error");
+    } finally {
+      submitting.current = false;
     }
   };
+
+  // ── En cola / en curso ──
+  if (status === "queued") {
+    return (
+      <div className="space-y-6">
+        <VideoHero videoUrl={videoUrl} sourceType={sourceType} sourceRef={sourceRef} title={videoTitle} initialSeconds={initialSeconds} />
+        <div className="border border-hairline bg-surface p-12 text-center">
+          <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-2 border-ink/20 border-t-ink" />
+          <p className="text-sm font-medium text-ink">
+            {progress?.stage ? progress.stage : "Análisis deportivo en cola"}
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            {progress?.pct != null
+              ? `${progress.pct}% · ${progress.framesDone ?? 0}/${progress.framesTotal ?? 0} fotogramas`
+              : "YOLOv8 detectando personas y analizando movimiento…"}
+          </p>
+          {elapsed != null && (
+            <p className="mt-3 text-xs tabular-nums text-muted">
+              {elapsed < 60 ? `Hace ${elapsed} s` : `Hace ${Math.floor(elapsed / 60)} min`}
+              {progress?.pct != null ? ` · queda ~${estimateRemaining(elapsed, progress.pct)}` : ""}
+            </p>
+          )}
+          <p className="mt-4 text-xs text-muted">
+            Podés cerrar esta página: el análisis sigue en el servidor.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // ── Loading ──
   if (status === "loading") {

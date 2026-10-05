@@ -1,11 +1,12 @@
 import "server-only";
 import { execFile, spawn, ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import type { VideoRow } from "@/lib/schema";
+import { parseProgress, progressPathFor, type JobProgress } from "@/lib/job-progress";
 import { ApiServiceError } from "@/lib/services/videoService";
 import { downloadVideoFromStorage, readAnalysisFromStorage, saveAnalysisToStorage } from "@/lib/videos/storage";
 import { downloadYouTubeVideo } from "@/lib/videos/youtube";
@@ -267,7 +268,7 @@ async function sendWorkerCommand(cmd: Record<string, unknown>, timeoutMs = 60000
 
 export async function startSportAnalysis(
   video: VideoRow,
-  options: { sample_fps?: number; sport?: string } = {}
+  options: { sample_fps?: number; sport?: string; onProgress?: (p: JobProgress) => void } = {}
 ): Promise<SportAnalysisResult> {
   const videoPath = await resolveVideoPath(video);
   const outputPath = getOutputPath(video.id);
@@ -303,13 +304,22 @@ export async function startSportAnalysis(
   }
 
   // Fallback: direct execution (spawns new Python process each time)
+  const progressPath = progressPathFor(outputPath);
   const args = [
     script,
     videoPath,
     "--output", outputPath,
     "--sample-fps", String(sampleFps),
     "--sport", sport,
+    "--progress", progressPath,
   ];
+
+  // El script publica su avance en `progressPath`; lo vigilamos mientras corre
+  // para que la UI pueda mostrar una barra en vez de un spinner indefinite.
+  let stopProgress: (() => void) | null = null;
+  if (options.onProgress) {
+    stopProgress = watchProgress(progressPath, options.onProgress);
+  }
 
   try {
     // Run analysis with 30 minute timeout
@@ -332,7 +342,36 @@ export async function startSportAnalysis(
       500,
       `Error en análisis: ${error instanceof Error ? error.message : "Error desconocido"}`
     );
+  } finally {
+    stopProgress?.();
+    try { unlinkSync(progressPath); } catch { /* best effort */ }
   }
+}
+
+/**
+ * Vigila el archivo de progreso que escribe el script Python y reporta los
+ * cambios. Devuelve la función para detener la vigilancia.
+ */
+function watchProgress(
+  progressPath: string,
+  onProgress: (p: JobProgress) => void,
+  intervalMs = 2000
+): () => void {
+  let lastRaw = "";
+  const id = setInterval(() => {
+    try {
+      const raw = readFileSync(progressPath, "utf8");
+      if (raw === lastRaw) return;
+      lastRaw = raw;
+      const parsed = parseProgress(raw);
+      if (parsed) onProgress(parsed);
+    } catch {
+      // El archivo aún no existe o se está renombrando: se reintenta al tick.
+    }
+  }, intervalMs);
+  // No mantiene el proceso vivo solo por la vigilancia.
+  if (typeof id === "object" && id && "unref" in id) id.unref();
+  return () => clearInterval(id);
 }
 
 export async function getSportAnalysis(

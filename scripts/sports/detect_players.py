@@ -14,6 +14,7 @@ import argparse
 import math
 import tempfile
 import os
+from datetime import datetime
 from pathlib import Path
 
 import cv2
@@ -216,7 +217,45 @@ def calculate_metrics(tracks, frame_width, fps):
     return metrics
 
 
-def process_video(video_path, output_path=None, sample_fps=SAMPLE_FPS):
+PROGRESS_EVERY = 25  # muestras entre escrituras de progreso
+# La deteccion usa solo el 90% de la barra: el postprocesamiento (metrics,
+# sport_specific, guardado) ocupa el resto y asi la barra nunca retrocede.
+DETECTION_PCT_CAP = 90
+
+
+def write_progress(progress_path, stage, frames_done, frames_total, pct_cap=100):
+    """Publica el avance en un archivo para que la UI pueda mostrarlo.
+
+    Se escribe en un archivo temporal y se renombra, para que un lector
+    concurrente nunca vea un JSON a medio escribir.
+
+    `pct_cap` reserva la parte final de la barra para otras fases: la deteccion
+    se detiene en 90 para que el postprocesamiento pueda continuar desde ahi en
+    lugar de que la barra retroceda de 100 a 92.
+    """
+    if not progress_path:
+        return
+    try:
+        pct = None
+        if frames_total:
+            pct = max(0, min(pct_cap, round(frames_done / frames_total * pct_cap)))
+        payload = {
+            "stage": stage,
+            "frames_done": frames_done,
+            "frames_total": frames_total,
+            "pct": pct,
+            "updated_at": datetime.now().isoformat(),
+        }
+        tmp = f"{progress_path}.tmp"
+        with open(tmp, "w") as fh:
+            json.dump(payload, fh)
+        os.replace(tmp, progress_path)
+    except Exception:
+        # El progreso es best-effort: nunca debe romper el análisis.
+        pass
+
+
+def process_video(video_path, output_path=None, sample_fps=SAMPLE_FPS, progress_path=None):
     """Main processing pipeline."""
     print(f"Loading model ({YOLO_MODEL})...")
     model = load_model()
@@ -243,6 +282,9 @@ def process_video(video_path, output_path=None, sample_fps=SAMPLE_FPS):
     tracks = {}
     prev_team_assignments = {}
     frame_idx = 0
+    sampled_total = max(1, total_frames // frame_step)
+    sampled_done = 0
+    write_progress(progress_path, "Analizando con YOLOv8", 0, sampled_total, DETECTION_PCT_CAP)
 
     while True:
         ret, frame = cap.read()
@@ -354,9 +396,14 @@ def process_video(video_path, output_path=None, sample_fps=SAMPLE_FPS):
         if frame_idx % 50 == 0:
             print(f"  Frame {frame_idx}/{total_frames} ({len(tracks)} tracks)")
 
+        sampled_done += 1
+        if sampled_done % PROGRESS_EVERY == 0:
+            write_progress(progress_path, "Analizando con YOLOv8", sampled_done, sampled_total, DETECTION_PCT_CAP)
+
         frame_idx += 1
 
     cap.release()
+    write_progress(progress_path, "Analizando con YOLOv8", sampled_total, sampled_total, DETECTION_PCT_CAP)
 
     # Build summary
     all_players = {}

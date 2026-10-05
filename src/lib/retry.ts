@@ -18,3 +18,13 @@ export function isRetryableError(kind: string | null | undefined): boolean {
   if (!kind) return true;
   return !NON_RETRYABLE_ERROR_KINDS.has(kind);
 }
+/**
+ * Normaliza cualquier excepción al payload de error que se guarda en la columna
+ * `error` de un job. Comparte la forma que usa `isRetryableError`.
+ */
+export function errorPayload(error: unknown): Record<string, unknown> {
+  const message = error instanceof Error ? error.message : String(error);
+  const customKind =
+    error instanceof Error ? (error as Error & { kind?: string }).kind : undefined;
+  return { message, kind: customKind ?? "internal", detail: null };
+}

@@ -2,6 +2,7 @@ import "server-only";
 import { readFileSync } from "node:fs";
 import { getVideoById } from "@/lib/repo";
 import { claimNextPendingJob, finishProcessingJob, isRetryableError, MAX_JOB_ATTEMPTS, requeueProcessingJob } from "@/lib/processor";
+import { errorPayload as toErrorPayload } from "@/lib/retry";
 import { AIActionError, detectSportWithVision, generateCoachReportWithVision, generateImprovementsWithVision, saveVideoAIInsight } from "@/lib/ai/video-agent";
 
 // ── Env loading ────────────────────────────────────────────────────────────────
@@ -35,9 +36,7 @@ function errorPayload(error: unknown): Record<string, unknown> {
   if (error instanceof AIActionError) {
     return { message: error.message, kind: error.kind, detail: error.detail ?? null };
   }
-  const message = error instanceof Error ? error.message : String(error);
-  const customKind = error instanceof Error ? (error as Error & { kind?: string }).kind : undefined;
-  return { message, kind: customKind ?? "internal", detail: null };
+  return toErrorPayload(error);
 }
 
 async function sendAlert(message: string): Promise<void> {
@@ -87,8 +86,24 @@ async function processJob(job: { id: string; videoId: string; kind: string; payl
 
   if (job.kind === "sports") {
     const { startSportAnalysis } = await import("@/lib/sports/service");
+    const { updateJobProgress } = await import("@/lib/processor");
     const sampleFps = Number(job.payload?.sample_fps ?? 5);
-    await startSportAnalysis(video, { sample_fps: sampleFps });
+    // Publica el avance para que la UI no muestre un spinner de 40 minutos.
+    let lastPct = -1;
+    await startSportAnalysis(video, {
+      sample_fps: sampleFps,
+      onProgress: (p) => {
+        if (p.pct == null || p.pct === lastPct) return;
+        lastPct = p.pct;
+        void updateJobProgress(job.id, {
+          pct: p.pct,
+          stage: p.stage,
+          framesDone: p.framesDone,
+          framesTotal: p.framesTotal,
+          updatedAt: p.updatedAt,
+        });
+      },
+    });
     return;
   }
 

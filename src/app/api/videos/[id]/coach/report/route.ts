@@ -29,7 +29,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/videos/
     }
 
     if (isProcessorQueueEnabled()) {
-      const job = await enqueueProcessingJob(id, "coach-report");
+      const { job } = await enqueueProcessingJob(id, "coach-report");
       return NextResponse.json({ status: "queued", jobId: job.id });
     }
 
