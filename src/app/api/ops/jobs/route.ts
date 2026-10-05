@@ -11,7 +11,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
     const url = new URL(request.url);
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 50) || 50, 100);
-    const [jobs, stats] = await Promise.all([listRecentJobs(limit), getOpsStats()]);
+    const [jobs, stats] = await Promise.all([listRecentJobs(user.id, limit), getOpsStats(user.id)]);
     return NextResponse.json({ jobs, stats });
   } catch (error) {
     return serializeError(error);

@@ -1,9 +1,38 @@
 import "server-only";
 import { getClient } from "@/lib/db";
+import { listAlumnos } from "@/lib/profile/service";
 
 function postError(operation: string, error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   throw new Error(`${operation}: ${message}`);
+}
+
+/**
+ * Videos que un profesor puede operar: los propios + los de sus alumnos
+ * vinculados. Sin este filtro, el panel de operaciones expondría los jobs y
+ * títulos de video de los demás usuarios de la plataforma.
+ *
+ * Nota: los videos de un alumno cuelgan de `videos.user_id` (el alumno es el
+ * dueño); `alumno_id` está en null en todos los videos del proyecto, así que el
+ * vínculo profesor-alumno se resuelve vía `profesor_alumno` y se filtra por
+ * `user_id`.
+ */
+async function listOperableVideoIds(userId: string): Promise<string[]> {
+  const alumnos = await listAlumnos(userId).catch(() => []);
+  const ownerIds = [userId, ...alumnos.map((alumno) => alumno.id)];
+
+  const { data, error } = await getClient()
+    .from("videos")
+    .select("id")
+    .in("user_id", ownerIds);
+  if (error) postError("ops.listOperableVideoIds", error);
+  return (data ?? []).map((row) => String(row.id));
+}
+
+/** ¿Este profesor puede operar (ver/re-intentar) los jobs de este video? */
+export async function canOperateVideo(userId: string, videoId: string): Promise<boolean> {
+  const videoIds = await listOperableVideoIds(userId);
+  return videoIds.includes(videoId);
 }
 
 export interface OpsJobRow {
@@ -30,10 +59,14 @@ export interface OpsStats {
   videosTotal: number;
 }
 
-export async function listRecentJobs(limit = 50): Promise<OpsJobRow[]> {
+export async function listRecentJobs(userId: string, limit = 50): Promise<OpsJobRow[]> {
+  const videoIds = await listOperableVideoIds(userId);
+  if (videoIds.length === 0) return [];
+
   const { data, error } = await getClient()
     .from("processing_jobs")
     .select("id, video_id, kind, status, error, attempts, run_after, created_at, started_at, finished_at, videos(title)")
+    .in("video_id", videoIds)
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) postError("ops.listRecentJobs", error);
@@ -52,15 +85,19 @@ export async function listRecentJobs(limit = 50): Promise<OpsJobRow[]> {
   }));
 }
 
-export async function getOpsStats(): Promise<OpsStats> {
+export async function getOpsStats(userId: string): Promise<OpsStats> {
+  const videoIds = await listOperableVideoIds(userId);
+  if (videoIds.length === 0) {
+    return { pending: 0, processing: 0, doneTotal: 0, errorTotal: 0, meanDoneMs: null, jobsLast7d: 0, videosTotal: 0 };
+  }
   const client = getClient();
 
   const [pending, processing, doneTotal, errorTotal, videosTotal] = await Promise.all([
-    client.from("processing_jobs").select("id", { count: "exact", head: true }).eq("status", "pending"),
-    client.from("processing_jobs").select("id", { count: "exact", head: true }).eq("status", "processing"),
-    client.from("processing_jobs").select("id", { count: "exact", head: true }).eq("status", "done"),
-    client.from("processing_jobs").select("id", { count: "exact", head: true }).eq("status", "error"),
-    client.from("videos").select("id", { count: "exact", head: true }),
+    client.from("processing_jobs").select("id", { count: "exact", head: true }).in("video_id", videoIds).eq("status", "pending"),
+    client.from("processing_jobs").select("id", { count: "exact", head: true }).in("video_id", videoIds).eq("status", "processing"),
+    client.from("processing_jobs").select("id", { count: "exact", head: true }).in("video_id", videoIds).eq("status", "done"),
+    client.from("processing_jobs").select("id", { count: "exact", head: true }).in("video_id", videoIds).eq("status", "error"),
+    client.from("videos").select("id", { count: "exact", head: true }).in("id", videoIds),
   ]);
 
   for (const result of [pending, processing, doneTotal, errorTotal, videosTotal]) {
@@ -72,6 +109,7 @@ export async function getOpsStats(): Promise<OpsStats> {
   const { data: doneJobs } = await getClient()
     .from("processing_jobs")
     .select("created_at, finished_at")
+    .in("video_id", videoIds)
     .eq("status", "done")
     .gte("created_at", cutoff)
     .order("created_at", { ascending: false })
@@ -80,6 +118,7 @@ export async function getOpsStats(): Promise<OpsStats> {
   const all7dResult = (await getClient()
     .from("processing_jobs")
     .select("id", { count: "exact", head: true })
+    .in("video_id", videoIds)
     .gte("created_at", cutoff)) as unknown as { data: { count?: number } | null; error: unknown };
   const jobsLast7d = all7dResult.data?.count ?? doneJobs?.length ?? 0;
 

@@ -11,7 +11,8 @@ import {
   saveVideoAIInsight,
 } from "@/lib/ai/video-agent";
 import { ApiServiceError } from "@/lib/services/videoService";
-import { getActiveProcessingJob, isProcessorQueueEnabled, enqueueProcessingJob } from "@/lib/processor";
+import { getActiveProcessingJob, getLatestProcessingJob, isProcessorQueueEnabled, enqueueProcessingJob } from "@/lib/processor";
+import { resolveJobViewStatus, jobErrorMessage } from "@/lib/processor-status";
 
 export interface CoachReportApiResponse extends CoachReportVisionResult {
   cached: boolean;
@@ -73,17 +74,20 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/videos/[
       return NextResponse.json(body);
     }
 
-    if (activeJob) {
-      const jobError = activeJob.error;
-      if (jobError) {
-        return NextResponse.json({
-          status: "error",
-          error: String(jobError.message ?? "La generación del informe falló."),
-          kind: String(jobError.kind ?? "error"),
-          detail: jobError.detail ? String(jobError.detail) : null,
-        });
-      }
-      return NextResponse.json({ status: "queued", jobId: activeJob.id });
+    const latestJob = activeJob ? null : await getLatestProcessingJob(id, "coach-report").catch(() => null);
+    const view = resolveJobViewStatus(activeJob, latestJob);
+    if (view === "queued") {
+      return NextResponse.json({ status: "queued", jobId: activeJob?.id });
+    }
+
+    if (view === "error") {
+      const jobError = (latestJob?.error ?? {}) as { kind?: unknown; detail?: unknown };
+      return NextResponse.json({
+        status: "error",
+        error: jobErrorMessage(latestJob?.error, "La generación del informe falló."),
+        kind: String(jobError.kind ?? "error"),
+        detail: jobError.detail ? String(jobError.detail) : null,
+      });
     }
 
     return NextResponse.json({ status: "none" });

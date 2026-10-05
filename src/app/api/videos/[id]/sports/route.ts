@@ -7,7 +7,8 @@ import {
   startSportAnalysis,
   getSportAnalysis,
 } from "@/lib/sports/service";
-import { getActiveProcessingJob, isProcessorQueueEnabled, enqueueProcessingJob } from "@/lib/processor";
+import { getActiveProcessingJob, getLatestProcessingJob, isProcessorQueueEnabled, enqueueProcessingJob } from "@/lib/processor";
+import { resolveJobViewStatus, jobErrorMessage } from "@/lib/processor-status";
 
 export async function GET(request: NextRequest, ctx: RouteContext<"/api/videos/[id]/sports">): Promise<NextResponse> {
   try {
@@ -21,15 +22,16 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/videos/[
     const analysis = await getSportAnalysis(id);
     if (!analysis) {
       const activeJob = await getActiveProcessingJob(id, "sports").catch(() => null);
-      if (activeJob) {
-        const jobError = activeJob.error;
-        if (jobError) {
-          return NextResponse.json({
-            status: "error",
-            error: String(jobError.message ?? "El análisis deportivo falló."),
-          });
-        }
-        return NextResponse.json({ status: "queued", jobId: activeJob.id });
+      const latestJob = activeJob ? null : await getLatestProcessingJob(id, "sports").catch(() => null);
+      const view = resolveJobViewStatus(activeJob, latestJob);
+      if (view === "queued") {
+        return NextResponse.json({ status: "queued", jobId: activeJob?.id });
+      }
+      if (view === "error") {
+        return NextResponse.json({
+          status: "error",
+          error: jobErrorMessage(latestJob?.error, "El análisis deportivo falló."),
+        });
       }
       return NextResponse.json({ status: "none" });
     }

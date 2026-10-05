@@ -66,7 +66,7 @@ export default async function OperacionesPage() {
   if (!user) redirect("/login");
   if (user.rol !== "profesor") redirect("/app");
 
-  const [jobs, stats] = await Promise.all([listRecentJobs(50), getOpsStats()]);
+  const [jobs, stats] = await Promise.all([listRecentJobs(user.id, 50), getOpsStats(user.id)]);
 
   const cards = [
     { label: "Videos totales", value: String(stats.videosTotal), icon: Activity, tone: "text-ink" },

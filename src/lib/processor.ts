@@ -2,6 +2,7 @@ import "server-only";
 import { getClient } from "./db";
 import type { ProcessingJobKind, ProcessingJobRow, ProcessingJobStatus } from "./schema";
 import { retryDelayMs } from "./retry";
+import { staleMinutesForKind } from "./processor-status";
 
 export const PROCESSOR_QUEUE_FLAG = "LENTE_PROCESSOR_QUEUE";
 
@@ -54,6 +55,43 @@ export async function getActiveProcessingJob(
   return parseJob(data);
 }
 
+/**
+ * Último job de cualquier estado para un video+kind.
+ *
+ * Sirve para distinguir dos casos que `getActiveProcessingJob` no separa:
+ * un job encolado que se está reintentando (pending + error previo => sigue en
+ * cola, no falló) y un job que agotó sus reintentos (status error => falló de
+ * verdad y hay que avisarle al usuario).
+ */
+export async function getLatestProcessingJob(
+  videoId: string,
+  kind: ProcessingJobKind,
+): Promise<ProcessingJobRow | null> {
+  const { data, error } = await getClient()
+    .from("processing_jobs")
+    .select(JOB_COLUMNS)
+    .eq("video_id", videoId)
+    .eq("kind", kind)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`getLatestProcessingJob: ${error.message}`);
+  if (!data) return null;
+  return parseJob(data);
+}
+
+/** Devuelve un job por su id (cualquier estado), o null. */
+export async function getJobById(id: string): Promise<ProcessingJobRow | null> {
+  const { data, error } = await getClient()
+    .from("processing_jobs")
+    .select(JOB_COLUMNS)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(`getJobById: ${error.message}`);
+  if (!data) return null;
+  return parseJob(data);
+}
+
 /** Crea un job (si no hay uno activo para el mismo video+kind). Devuelve el job activo resultante. */
 export async function enqueueProcessingJob(
   videoId: string,
@@ -72,16 +110,27 @@ export async function enqueueProcessingJob(
   return parseJob(data);
 }
 
-/** Jobs en processing hace más de X minutos (worker muerto/caído) vuelven a pending. */
-async function reviveStaleJobs(maxMinutes = 30): Promise<void> {
+/**
+ * Jobs en processing hace más de X minutos (worker muerto/caído) vuelven a pending.
+ * El umbral depende del tipo de job: ver `staleMinutesForKind`.
+ */
+async function reviveStaleJobs(): Promise<void> {
   try {
-    const cutoff = new Date(Date.now() - maxMinutes * 60 * 1000).toISOString();
-    const { error } = await getClient()
-      .from("processing_jobs")
-      .update({ status: "pending", updated_at: new Date().toISOString() })
-      .eq("status", "processing")
-      .lt("started_at", cutoff);
-    if (error) throw new Error(error.message);
+    const client = getClient();
+    const kinds = await client.from("processing_jobs").select("kind").eq("status", "processing");
+    if (kinds.error) throw new Error(kinds.error.message);
+
+    const kindsInUse = [...new Set((kinds.data ?? []).map((row) => String(row.kind)))];
+    for (const kind of kindsInUse) {
+      const cutoff = new Date(Date.now() - staleMinutesForKind(kind) * 60 * 1000).toISOString();
+      const { error } = await client
+        .from("processing_jobs")
+        .update({ status: "pending", updated_at: new Date().toISOString() })
+        .eq("status", "processing")
+        .eq("kind", kind)
+        .lt("started_at", cutoff);
+      if (error) throw new Error(error.message);
+    }
   } catch {
     // best effort
   }
