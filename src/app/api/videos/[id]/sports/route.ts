@@ -10,6 +10,8 @@ import {
 import { getActiveProcessingJob, getLatestProcessingJob, isProcessorQueueEnabled, enqueueProcessingJob, startInlineProcessingJob, updateJobProgress, finishProcessingJob } from "@/lib/processor";
 import { resolveJobViewStatus, jobErrorMessage } from "@/lib/processor-status";
 import { errorPayload } from "@/lib/retry";
+import { readJsonBody, sportsOptionsSchema } from "@/lib/validation/api";
+import { sendAlert } from "@/lib/alerts";
 import { isProgressFresh, parseProgress, type JobProgress } from "@/lib/job-progress";
 import type { ProcessingJobRow } from "@/lib/schema";
 
@@ -95,15 +97,12 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/videos/
       });
     }
 
-    let options: { sample_fps?: number } = {};
-    try {
-      options = await request.json();
-    } catch {
-      // Use defaults
-    }
+    // Cuerpo vacío → `{}` → el default del schema (5 fps). JSON malformado o
+    // `sample_fps` fuera de rango → 400 antes de tocar Python.
+    const options = await readJsonBody(request, sportsOptionsSchema);
 
     if (isProcessorQueueEnabled()) {
-      const { job } = await enqueueProcessingJob(id, "sports", { sample_fps: options.sample_fps ?? 5 });
+      const { job } = await enqueueProcessingJob(id, "sports", { sample_fps: options.sample_fps });
       return NextResponse.json({ status: "queued", jobId: job.id, queuedAt: job.createdAt });
     }
 
@@ -111,7 +110,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/videos/
     // quede visible en el panel y un POST concurrente no lance un segundo
     // análisis del mismo video.
     const { job: inlineJob, isWinner } = await startInlineProcessingJob(id, "sports", {
-      sample_fps: options.sample_fps ?? 5,
+      sample_fps: options.sample_fps,
     });
     // Perdimos la carrera: otro request ya está analizando este video. No
     // analizamos: solo delegamos el seguimiento del job ganador.
@@ -135,6 +134,12 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/videos/
     } catch (error) {
       const payload = errorPayload(error);
       await finishProcessingJob(inlineJob.id, "error", payload);
+      await sendAlert({
+        level: "error",
+        title: "Fallo final de sports",
+        message: error instanceof Error ? error.message : String(error),
+        data: { jobId: inlineJob.id, videoId: id, errorKind: String(payload.kind ?? "internal") },
+      });
       throw error;
     }
   } catch (error) {

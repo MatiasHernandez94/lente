@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
 import { requireApiUser, serializeError } from "@/lib/api";
+import { createGeminiClient } from "@/lib/ai/providers/gemini";
 import { createPendiente } from "@/lib/repo";
+import { readJsonBody, extraerPendientesSchema } from "@/lib/validation/api";
 
 export async function POST(req: NextRequest) {
   let user;
@@ -13,19 +14,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    let body: { texto?: string };
-    try {
-      body = await req.json();
-    } catch {
-      return NextResponse.json({ error: "Falta el texto" }, { status: 400 });
-    }
+    const { texto } = await readJsonBody(req, extraerPendientesSchema);
 
-    const texto = body?.texto;
-    if (typeof texto !== "string" || texto.trim() === "") {
-      return NextResponse.json({ error: "Falta el texto" }, { status: 400 });
-    }
-
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = createGeminiClient(process.env.GEMINI_API_KEY ?? "");
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash-lite",
       contents: `Extraé los compromisos y tareas pendientes del siguiente texto. Respondé únicamente con cada tarea en una línea propia, sin numerar ni adornos:\n\n${texto}`,

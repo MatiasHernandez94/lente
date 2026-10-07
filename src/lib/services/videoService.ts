@@ -15,6 +15,9 @@ import {
   updateVideoStatus,
 } from "@/lib/repo";
 import type { VideoRow } from "@/lib/schema";
+import { ApiServiceError } from "./errors";
+
+export { ApiServiceError };
 
 const SIMULATED_PROCESS_MS = 1200;
 
@@ -127,15 +130,6 @@ export async function listUserVideos(userId: string): Promise<ListItem[]> {
     });
   }
   return items;
-}
-
-export class ApiServiceError extends Error {
-  readonly statusCode: number;
-
-  constructor(statusCode: number, message: string) {
-    super(message);
-    this.statusCode = statusCode;
-  }
 }
 
 export interface DemoExample {

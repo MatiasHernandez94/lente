@@ -4,12 +4,9 @@ import { getVideoById } from "@/lib/repo";
 import { isAlumnoOf } from "@/lib/profile/service";
 import { resolveClipRange, extractClip, uploadClip } from "@/lib/clip/service";
 import { getClient } from "@/lib/db";
+import { readJsonBody, clipSchema } from "@/lib/validation/api";
 
 export const maxDuration = 60;
-
-interface ClipRequest {
-  correccionId: string;
-}
 
 interface CorreccionRow {
   id: string;
@@ -23,10 +20,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const user = await requireApiUser();
     assertSameOrigin(request);
 
-    const body = (await request.json().catch(() => null)) as ClipRequest | null;
-    if (!body || typeof body.correccionId !== "string" || !body.correccionId) {
-      return NextResponse.json({ error: "Solicitud inválida." }, { status: 400 });
-    }
+    const body = await readJsonBody(request, clipSchema);
 
     const { data: correccion, error: correccionError } = await getClient()
       .from("correcciones")

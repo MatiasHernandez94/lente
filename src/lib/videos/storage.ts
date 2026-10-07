@@ -16,7 +16,7 @@ export interface ResolvedVideoSource {
   streamUrl: string | null;
 }
 
-function storageConfigured(): boolean {
+export function storageConfigured(): boolean {
   return Boolean(process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL) && Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 

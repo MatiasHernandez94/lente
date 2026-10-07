@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiUser } from "@/lib/api";
+import { requireApiUser, serializeError } from "@/lib/api";
+import { readJsonBody, okrCreateSchema } from "@/lib/validation/api";
 import { getVideoById } from "@/lib/repo";
 import { createOKR, listOKRsForVideo } from "@/lib/okrs/service";
 import { suggestOKRs } from "@/lib/okrs/engine";
@@ -35,27 +36,26 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const user = await requireApiUser();
-  const { id } = await params;
-  const video = await getVideoById(id);
-  if (!video || video.userId !== user.id) {
-    return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+  try {
+    const user = await requireApiUser();
+    const { id } = await params;
+    const video = await getVideoById(id);
+    if (!video || video.userId !== user.id) {
+      return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+    }
+
+    const { title, objective, keyResults } = await readJsonBody(req, okrCreateSchema);
+
+    const okr = await createOKR({
+      videoId: id,
+      userId: user.id,
+      title,
+      objective,
+      keyResults,
+    });
+
+    return NextResponse.json({ okr });
+  } catch (error) {
+    return serializeError(error);
   }
-
-  const body = await req.json();
-  const { title, objective, keyResults } = body;
-
-  if (!title || !objective || !Array.isArray(keyResults)) {
-    return NextResponse.json({ error: "Datos inválidos" }, { status: 400 });
-  }
-
-  const okr = await createOKR({
-    videoId: id,
-    userId: user.id,
-    title,
-    objective,
-    keyResults,
-  });
-
-  return NextResponse.json({ okr });
 }

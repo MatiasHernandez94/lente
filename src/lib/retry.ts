@@ -6,6 +6,10 @@ const NON_RETRYABLE_ERROR_KINDS = new Set([
   "video_unavailable",
   "unknown_job_kind",
   "no_sport_detected",
+  // Payload corrupto o fuera de rango: determinista, no se arregla solo.
+  "invalid_payload",
+  // Faltan claves de API: reintentar no las inventa.
+  "no_keys",
 ]);
 
 /** Backoff exponencial en ms según intentos ya realizados (1er reintento ≈ 30s). */

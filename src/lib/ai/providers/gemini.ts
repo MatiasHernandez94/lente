@@ -15,6 +15,21 @@ import type { Sport } from "@/lib/analysis/types";
 
 const VALID_SPORTS = SPORTS.map((s) => s.value);
 
+/**
+ * Tope por request hacia Gemini.
+ *
+ * Sin timeout, una conexión colgada deja al worker atascado en `processing`
+ * para siempre (el loop es secuencial) hasta que `reviveStaleJobs` lo mate.
+ * 60s es holgado para vision + texto y acota el peor caso del SDK: 5 intentos
+ * por defecto (408/429/5xx, backoff 1s ×2) → ≈ 5 min por intento de job.
+ */
+export const GEMINI_TIMEOUT_MS = 60_000;
+
+/** Cliente Gemini con timeout. El retry lo trae el SDK (5 intentos por defecto). */
+export function createGeminiClient(apiKey: string): GoogleGenAI {
+  return new GoogleGenAI({ apiKey, httpOptions: { timeout: GEMINI_TIMEOUT_MS } });
+}
+
 interface GeminiClientCtor {
   apiKey: string;
   visionModel: string;
@@ -42,7 +57,7 @@ export class GeminiProvider implements AIProvider {
   private readonly agentModel: string;
 
   constructor({ apiKey, visionModel, agentModel }: GeminiClientCtor) {
-    this.ai = new GoogleGenAI({ apiKey });
+    this.ai = createGeminiClient(apiKey);
     this.visionModel = visionModel;
     this.agentModel = agentModel;
     this.name = `gemini:${visionModel}`;

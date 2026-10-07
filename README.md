@@ -36,6 +36,34 @@ correr `npm run worker` en la máquina del desarrollador mientras se procesan an
 > pueden desplegar después en un VPS/worker en la nube (opción paga) sin cambiar la lógica:
 > el worker solo conoce Supabase por URL + service role.
 
+### Alertas operativas (Telegram)
+
+El worker y la app mandan alertas por Telegram ante fallos terminales, fallos de
+persistencia, worker caído o cola estancada. Configurar:
+
+1. Crear un bot con **@BotFather** (`/newbot`) → te da `TELEGRAM_BOT_TOKEN`.
+2. Mandarle un mensaje al bot y obtener tu chat id en
+   `https://api.telegram.org/bot<TOKEN>/getUpdates` (campo `message.chat.id`).
+3. Setear en el entorno (Vercel + `.env.local`, **nunca en el repo**):
+   `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID`.
+
+Si faltan, `sendAlert` descarta silenciosamente una vez (log en consola) y el resto
+sigue funcionando.
+
+### Monitoreo proactivo (`/api/cron/health`)
+
+`GET /api/cron/health` chequea tres señales y alerta por Telegram si encuentra algo:
+
+- **Worker caído**: el heartbeat (`worker_heartbeat`, 1 fila) tiene más de 10 min.
+- **Cola estancada**: hay jobs pendientes hace más de 15 min y nadie procesando.
+- **Jobs clavados en `processing`** más de 60 min (worker muerto a mitad).
+
+Requiere `CRON_SECRET` (header `Authorization: Bearer $CRON_SECRET`). Dos disparadores:
+
+- **Vercel Cron** (`vercel.json`, diario): red de seguridad. En Hobby sólo permite 1 vez/día.
+- **Scheduler externo cada 10 min** (cron-job.org, gratuito): el que importa. El endpoint
+  acepta `?sinceMinutes=` para el digest de errores (default 15).
+
 ## Roadmap de automatizaciones (backlog)
 
 Mejoras de producto identificadas como oportunidades de automatización (no implementadas aún).

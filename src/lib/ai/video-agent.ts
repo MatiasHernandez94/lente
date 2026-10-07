@@ -12,6 +12,7 @@ import type { ImprovementsResult } from "./providers/types";
 import { downloadVideoFromStorage, readAnalysisFromStorage, saveAnalysisToStorage } from "@/lib/videos/storage";
 import { downloadYouTubeVideo } from "@/lib/videos/youtube";
 import { buildCoachTimeline } from "./coach";
+import { sendAlert } from "@/lib/alerts";
 
 const UPLOADS_DIR = join(process.cwd(), "data", "uploads");
 const AI_RESULTS_DIR = join(process.cwd(), "data", "sports-analysis");
@@ -328,7 +329,17 @@ export async function saveVideoAIInsight(
     updated_at: new Date().toISOString(),
   };
 
-  void saveAnalysisToStorage(`${videoId}.ai.json`, merged);
+  // El espejo en Storage es lo único que Vercel (otro filesystem) puede leer:
+  // si falla, el job queda "done" y el usuario ve "sin análisis".
+  if (!(await saveAnalysisToStorage(`${videoId}.ai.json`, merged))) {
+    console.error("saveVideoAIInsight: no se pudo guardar el espejo en Storage");
+    await sendAlert({
+      level: "error",
+      title: "No se guardó el resultado del análisis de IA",
+      message: "El espejo en Storage falló; el video mostraría resultados vacíos.",
+      data: { videoId, insight: kind },
+    });
+  }
 
   try {
     if (!existsSync(AI_RESULTS_DIR)) {

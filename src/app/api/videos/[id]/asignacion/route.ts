@@ -4,6 +4,7 @@ import { requireApiUser, serializeError } from "@/lib/api";
 import { getVideoById, assignVideoToAlumno, getUserById } from "@/lib/repo";
 import { listAlumnos } from "@/lib/profile/service";
 import { ApiServiceError } from "@/lib/services/videoService";
+import { readJsonBody, asignacionSchema } from "@/lib/validation/api";
 
 export interface AsignacionApiResponse {
   userId: string;
@@ -63,7 +64,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext<"/api/videos/[
       throw new ApiServiceError(403, "Solo un profesor puede asignar el análisis a un alumno.");
     }
 
-    const body = (await request.json().catch(() => ({}))) as { alumnoId?: string | null };
+    const body = await readJsonBody(request, asignacionSchema);
     const alumnoId = body.alumnoId ?? null;
 
     if (alumnoId) {

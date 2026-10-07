@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { assertSameOrigin, requireApiUser, serializeError } from "@/lib/api";
 import { getVideoById } from "@/lib/repo";
 import { ApiServiceError } from "@/lib/services/videoService";
+import { readJsonBody, executionSchema } from "@/lib/validation/api";
 import {
   chooseExercise,
   getExecutionSnapshot,
@@ -32,10 +33,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/videos/
     if (!video || video.userId !== user.id) {
       throw new ApiServiceError(404, "El video no existe o no corresponde al usuario.");
     }
-    const body = (await request.json().catch(() => ({}))) as { exerciseId?: string };
-    if (!body.exerciseId) {
-      throw new ApiServiceError(400, "Se requiere un exerciseId.");
-    }
+    const body = await readJsonBody(request, executionSchema);
     await startExecution(video, body.exerciseId);
     return NextResponse.json({ status: "running" });
   } catch (error) {
@@ -52,10 +50,7 @@ export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/videos
     if (!video || video.userId !== user.id) {
       throw new ApiServiceError(404, "El video no existe o no corresponde al usuario.");
     }
-    const body = (await request.json().catch(() => ({}))) as { exerciseId?: string };
-    if (!body.exerciseId) {
-      throw new ApiServiceError(400, "Se requiere un exerciseId.");
-    }
+    const body = await readJsonBody(request, executionSchema);
     await chooseExercise(video, body.exerciseId);
     return NextResponse.json({ ok: true });
   } catch (error) {

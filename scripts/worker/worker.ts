@@ -3,6 +3,9 @@ import { readFileSync } from "node:fs";
 import { getVideoById } from "@/lib/repo";
 import { claimNextPendingJob, finishProcessingJob, isRetryableError, MAX_JOB_ATTEMPTS, requeueProcessingJob } from "@/lib/processor";
 import { errorPayload as toErrorPayload } from "@/lib/retry";
+import { sportsOptionsSchema, validateInput } from "@/lib/validation/api";
+import { sendAlert } from "@/lib/alerts";
+import { currentWorkerId, readWorkerHeartbeat, writeWorkerHeartbeat } from "@/lib/heartbeat";
 import { AIActionError, detectSportWithVision, generateCoachReportWithVision, generateImprovementsWithVision, saveVideoAIInsight } from "@/lib/ai/video-agent";
 
 // ── Env loading ────────────────────────────────────────────────────────────────
@@ -39,21 +42,6 @@ function errorPayload(error: unknown): Record<string, unknown> {
   return toErrorPayload(error);
 }
 
-async function sendAlert(message: string): Promise<void> {
-  const url = process.env.LENTE_ALERTS_WEBHOOK_URL;
-  if (!url) return;
-  try {
-    await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: message }),
-      signal: AbortSignal.timeout(8000),
-    });
-  } catch (err) {
-    console.error("[worker] No se pudo enviar la alerta:", err);
-  }
-}
-
 async function processJob(job: { id: string; videoId: string; kind: string; payload?: Record<string, unknown> | null }) {
   const video = await getVideoById(job.videoId);
   if (!video) {
@@ -87,7 +75,10 @@ async function processJob(job: { id: string; videoId: string; kind: string; payl
   if (job.kind === "sports") {
     const { startSportAnalysis } = await import("@/lib/sports/service");
     const { updateJobProgress } = await import("@/lib/processor");
-    const sampleFps = Number(job.payload?.sample_fps ?? 5);
+    // Mismo filtro que en la ruta: un sample_fps de 0 revienta Python con
+    // ZeroDivisionError a mitad del video. Acá es defensa en profundidad, el
+    // 400 real lo devolvió la API al encolar.
+    const { sample_fps: sampleFps } = validateInput(job.payload ?? {}, sportsOptionsSchema);
     // Publica el avance para que la UI no muestre un spinner de 40 minutos.
     let lastPct = -1;
     await startSportAnalysis(video, {
@@ -107,7 +98,9 @@ async function processJob(job: { id: string; videoId: string; kind: string; payl
     return;
   }
 
-  throw new Error(`Tipo de job desconocido: ${job.kind}`);
+  const unknown = new Error(`Tipo de job desconocido: ${job.kind}`);
+  (unknown as Error & { kind?: string }).kind = "unknown_job_kind";
+  throw unknown;
 }
 
 export async function tick() {
@@ -119,6 +112,7 @@ export async function tick() {
     return;
   }
   if (!job) return;
+  jobsClaimed++;
 
   console.log(`[worker] ▶ ${job.kind} (${job.videoId})`);
   try {
@@ -140,7 +134,18 @@ export async function tick() {
         console.log(`[worker] ↻ ${job.kind} (${job.videoId}) reintento ${job.attempts}/${MAX_JOB_ATTEMPTS}`);
       } else {
         await finishProcessingJob(job.id, "error", payload);
-        await sendAlert(`❌ Lente: fallo final del análisis "${job.kind}" (video ${job.videoId}) después de ${job.attempts} intentos.\n${String(payload.message ?? payload.kind ?? "error")}`);
+        await sendAlert({
+          level: "error",
+          title: `Fallo final de ${job.kind}`,
+          message: String(payload.message ?? payload.kind ?? "error desconocido"),
+          data: {
+            jobId: job.id,
+            videoId: job.videoId,
+            kind: job.kind,
+            errorKind: String(payload.kind ?? "internal"),
+            intentos: job.attempts,
+          },
+        });
       }
     } catch (e) {
       console.error("[worker] No se pudo guardar el error del job:", e);
@@ -148,10 +153,58 @@ export async function tick() {
   }
 }
 
+/** El worker escribe el heartbeat cada 60s (no en cada tick: 17k escrituras/día al pedo). */
+const HEARTBEAT_MS = 60_000;
+/** Si el hueco con el heartbeat previo supera esto, el proceso anterior murió. */
+const RESTART_GAP_MS = 5 * 60_000;
+
+const WORKER_ID = currentWorkerId();
+const WORKER_VERSION = process.env.GIT_SHA ?? null;
+
+let jobsClaimed = 0;
+let lastHeartbeatAt = 0;
+
+async function touchHeartbeat(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && now - lastHeartbeatAt < HEARTBEAT_MS) return;
+  lastHeartbeatAt = now;
+  await writeWorkerHeartbeat({
+    workerId: WORKER_ID,
+    pid: process.pid,
+    version: WORKER_VERSION,
+    jobsClaimed,
+  });
+}
+
+/**
+ * Al arrancar, si el heartbeat anterior de *este mismo* host es viejo, el
+ * proceso previo se cayó sin poder avisar. Es la única forma de enterarse de
+ * un crash sin infraestructura extra.
+ */
+async function reportPreviousGap(): Promise<void> {
+  try {
+    const previous = await readWorkerHeartbeat();
+    if (!previous || previous.workerId !== WORKER_ID) return;
+    const gapMs = Date.now() - Date.parse(previous.lastSeen);
+    if (!Number.isFinite(gapMs) || gapMs < RESTART_GAP_MS) return;
+    await sendAlert({
+      level: "warn",
+      title: "Worker reiniciado tras una caída",
+      message: `El proceso anterior dejó de responder hace ${Math.round(gapMs / 60_000)} min. Ya vuelve a procesar la cola.`,
+      data: { worker: WORKER_ID, version: WORKER_VERSION, jobsAlProcesoAnterior: previous.jobsClaimed },
+    });
+  } catch (error) {
+    console.error("[worker] No se pudo leer el heartbeat previo:", error);
+  }
+}
+
 export async function main() {
   console.log(`[worker] Arrancando. Polling cada ${POLL_MS}ms.`);
+  await reportPreviousGap();
+  await touchHeartbeat(true);
   while (true) {
     await tick();
+    await touchHeartbeat();
     await sleep(POLL_MS);
   }
 }

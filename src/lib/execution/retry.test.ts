@@ -11,7 +11,6 @@ test("retryDelayMs crece exponencialmente", () => {
 
 test("isRetryableError considera transitorios los fallos sin kind o recuperables", () => {
   assert.equal(isRetryableError("quota"), true);
-  assert.equal(isRetryableError("no_keys"), true);
   assert.equal(isRetryableError("internal"), true);
   assert.equal(isRetryableError(undefined), true);
   assert.equal(isRetryableError(null), true);
@@ -21,6 +20,10 @@ test("isRetryableError no reintenta fallos permanentes", () => {
   assert.equal(isRetryableError("video_unavailable"), false);
   assert.equal(isRetryableError("unknown_job_kind"), false);
   assert.equal(isRetryableError("no_sport_detected"), false);
+  // Payload determinista o claves faltantes: reintentar solo consume intentos
+  // y retrasa la alerta real.
+  assert.equal(isRetryableError("invalid_payload"), false);
+  assert.equal(isRetryableError("no_keys"), false);
 });
 
 test("MAX_JOB_ATTEMPTS es 3", () => {

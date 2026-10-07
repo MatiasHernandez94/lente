@@ -1,5 +1,6 @@
 import "server-only";
 import { getClient } from "./db";
+import { sendAlert } from "./alerts";
 import type { ProcessingJobKind, ProcessingJobRow, ProcessingJobStatus } from "./schema";
 import { retryDelayMs } from "./retry";
 import { staleMinutesForKind } from "./processor-status";
@@ -235,8 +236,15 @@ async function reviveStaleJobs(): Promise<void> {
         .lt("started_at", cutoff);
       if (error) throw new Error(error.message);
     }
-  } catch {
-    // best effort
+  } catch (error) {
+    // Si no se pueden rescatar los jobs clavados, la cola se queda con
+    // trabajo muerto y nadie se entera. Vale la pena avisar.
+    console.error("[processor] reviveStaleJobs:", error);
+    void sendAlert({
+      level: "error",
+      title: "No se pudieron rescatar jobs atascados",
+      message: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 

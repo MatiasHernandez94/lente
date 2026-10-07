@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import type { VideoRow } from "@/lib/schema";
 import { parseProgress, progressPathFor, type JobProgress } from "@/lib/job-progress";
 import { ApiServiceError } from "@/lib/services/videoService";
-import { downloadVideoFromStorage, readAnalysisFromStorage, saveAnalysisToStorage } from "@/lib/videos/storage";
+import { downloadVideoFromStorage, readAnalysisFromStorage, saveAnalysisToStorage, storageConfigured } from "@/lib/videos/storage";
 import { downloadYouTubeVideo } from "@/lib/videos/youtube";
 
 const execFileAsync = promisify(execFile);
@@ -266,6 +266,20 @@ async function sendWorkerCommand(cmd: Record<string, unknown>, timeoutMs = 60000
   });
 }
 
+/**
+ * Guarda el espejo del análisis en Storage con unos reintentos cortos.
+ *
+ * El análisis tarda ~40 min: no tiene sentido tirarlo por un 502 transitorio
+ * del storage. Devuelve false sólo si siguió fallando después de reintentar.
+ */
+async function persistAnalysis(key: string, data: SportAnalysisResult): Promise<boolean> {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (await saveAnalysisToStorage(key, data)) return true;
+    if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+  }
+  return false;
+}
+
 export async function startSportAnalysis(
   video: VideoRow,
   options: { sample_fps?: number; sport?: string; onProgress?: (p: JobProgress) => void } = {}
@@ -293,7 +307,16 @@ export async function startSportAnalysis(
       }, 60 * 60 * 1000);
 
       const data = JSON.parse(readFileSync(outputPath, "utf8"));
-      void saveAnalysisToStorage(`${video.id}.json`, data);
+      // En cola, Vercel y el worker viven en filesystems distintos: sin este
+      // espejo el job termina "done" y el usuario ve "sin análisis".
+      // (Sin Storage configurado el archivo local es la única fuente: no es un
+      // fallo, es el modo desarrollo.)
+      if (storageConfigured() && !(await persistAnalysis(`${video.id}.json`, data))) {
+        throw new ApiServiceError(
+          500,
+          "El análisis se calculó pero no pudo guardarse en Storage."
+        );
+      }
       return data as SportAnalysisResult;
     } catch (error) {
       throw new ApiServiceError(
@@ -334,7 +357,12 @@ export async function startSportAnalysis(
 
     // Read and return results
     const data = JSON.parse(readFileSync(outputPath, "utf8"));
-    void saveAnalysisToStorage(`${video.id}.json`, data);
+    if (storageConfigured() && !(await persistAnalysis(`${video.id}.json`, data))) {
+      throw new ApiServiceError(
+        500,
+        "El análisis se calculó pero no pudo guardarse en Storage."
+      );
+    }
     return data as SportAnalysisResult;
   } catch (error) {
     if (error instanceof ApiServiceError) throw error;

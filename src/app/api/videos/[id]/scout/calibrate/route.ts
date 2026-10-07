@@ -4,6 +4,7 @@ import { assertSameOrigin, requireApiUser, serializeError } from "@/lib/api";
 import { getVideoById } from "@/lib/repo";
 import { ApiServiceError } from "@/lib/services/videoService";
 import { saveCalibration, scoutPlayerMetrics } from "@/lib/scout/service";
+import { readJsonBody, scoutCalibrateSchema } from "@/lib/validation/api";
 
 export async function POST(request: NextRequest, ctx: RouteContext<"/api/videos/[id]/scout/calibrate">): Promise<NextResponse> {
   try {
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/videos/
       throw new ApiServiceError(404, "El video no existe o no corresponde al usuario.");
     }
 
-    const body = (await request.json()) as { points: { x: number; y: number }[]; court: { width: number; height: number } };
+    const body = await readJsonBody(request, scoutCalibrateSchema);
     const calibration = await saveCalibration(video, body);
     const metrics = await scoutPlayerMetrics(video);
 

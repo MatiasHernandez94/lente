@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { requireApiUser, serializeError } from "@/lib/api";
 import { getAnalysisForVideo, getVideoById, updateVideo } from "@/lib/repo";
+import { readJsonBody, videoPatchSchema } from "@/lib/validation/api";
 
 export async function GET(_request: NextRequest, ctx: RouteContext<"/api/videos/[id]">): Promise<NextResponse> {
   try {
@@ -30,10 +31,10 @@ export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/videos
       return NextResponse.json({ error: "El video no existe o no le corresponde." }, { status: 404 });
     }
 
-    const body = (await request.json()) as { title?: string; sport?: string };
+    const body = await readJsonBody(request, videoPatchSchema);
     const fields: { title?: string; sport?: string } = {};
-    if (typeof body.title === "string" && body.title.trim().length >= 3) fields.title = body.title.trim().slice(0, 120);
-    if (typeof body.sport === "string") fields.sport = body.sport;
+    if (body.title !== undefined) fields.title = body.title;
+    if (body.sport !== undefined) fields.sport = body.sport;
 
     if (Object.keys(fields).length === 0) {
       return NextResponse.json({ error: "Nada para actualizar." }, { status: 400 });
