@@ -25,6 +25,10 @@ import { ScoreRing } from "@/components/analysis/ScoreRing";
 import { CoachChat } from "@/components/coach/CoachChat";
 import { OKRDashboard } from "@/components/okrs/OKRDashboard";
 import { AIInsightsPanel } from "@/components/app/AIInsightsPanel";
+import { ActionableReport } from "@/components/app/ActionableReport";
+import { VideoSeekProvider, useVideoSeek } from "@/components/sports/VideoSeekContext";
+import type { ReportInsights } from "@/lib/analysis/insights";
+import type { UserRol } from "@/lib/schema";
 
 interface SoloAnalysis {
   activity_detected: boolean;
@@ -165,6 +169,8 @@ interface Props {
 export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourceRef, sport, initialSeconds }: Props) {
   const [status, setStatus] = useState<AnalysisStatus>("loading");
   const [data, setData] = useState<SportsData | null>(null);
+  const [insights, setInsights] = useState<ReportInsights | null>(null);
+  const [role, setRole] = useState<UserRol | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toolTab, setToolTab] = useState<ToolTab>("none");
   const [polling, setPolling] = useState(true);
@@ -184,6 +190,8 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourc
       const json = await res.json();
       setStatus(json.status);
       if (json.analysis) setData(json.analysis);
+      if (json.insights) setInsights(json.insights);
+      if (json.role) setRole(json.role);
       if (json.progress) setProgress(json.progress);
       if (json.queuedAt) setStartedAt(Date.parse(json.queuedAt));
       return json.status as AnalysisStatus;
@@ -242,6 +250,8 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourc
       const json = await res.json();
       setStatus(json.status);
       if (json.analysis) setData(json.analysis);
+      if (json.insights) setInsights(json.insights);
+      if (json.role) setRole(json.role);
       if (json.progress) setProgress(json.progress);
       if (json.queuedAt) setStartedAt(Date.parse(json.queuedAt));
       // La cola puede tardar: reiniciamos el polling hasta que termine.
@@ -357,8 +367,9 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourc
   const score = isSolo ? computeSoloScore(data.solo) : computeTeamScore(data);
 
   return (
-    <div className="space-y-6">
-      {/* Video + Score Hero */}
+    <VideoSeekProvider>
+      <div className="space-y-6">
+        {/* Video + Score Hero */}
       <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <VideoHero videoUrl={videoUrl} sourceType={sourceType} sourceRef={sourceRef} title={videoTitle} initialSeconds={initialSeconds} />
 
@@ -400,6 +411,18 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourc
           </div>
         </div>
       </div>
+
+      <ActionableReport
+        insights={insights}
+        mode={data.mode}
+        sport={data.sport}
+        durationSeconds={data.video.duration_s}
+        eventSummary={data.events.event_summary}
+        players={data.tracking.players}
+        highSeverityRisks={data.fatigue?.summary.high_severity_risks}
+        sportLabel={sportLabel(data.sport)}
+        role={role}
+      />
 
       {/* Metrics Grid */}
       {isSolo ? <SoloMetrics solo={data.solo!} /> : <TeamMetrics data={data} />}
@@ -452,8 +475,9 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourc
             <p className="text-xs text-muted">Elegí una herramienta arriba</p>
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </VideoSeekProvider>
   );
 }
 
@@ -473,6 +497,14 @@ function VideoHero({
   initialSeconds?: number;
 }) {
   const [seekAttempted, setSeekAttempted] = useState(false);
+  const seek = useVideoSeek();
+
+  useEffect(() => {
+    if (sourceType === "youtube" && sourceRef) {
+      const embed = youtubeEmbedUrl(sourceRef);
+      if (embed) seek.register(null);
+    }
+  }, [sourceType, sourceRef, seek]);
 
   if (sourceType === "youtube" && sourceRef) {
     const embed = youtubeEmbedUrl(sourceRef);
@@ -490,7 +522,7 @@ function VideoHero({
               allowFullScreen
             />
           </div>
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
             <p className="text-sm font-medium text-white">
               <a href={sourceRef} target="_blank" rel="noopener noreferrer" className="hover:underline">
                 {title}
@@ -509,6 +541,7 @@ function VideoHero({
         controls
         className="h-auto max-h-[72vh] w-full object-contain"
         crossOrigin="anonymous"
+        ref={(element) => seek.register(element)}
         onLoadedMetadata={(event) => {
           if (!seekAttempted && initialSeconds !== undefined && initialSeconds > 0) {
             const video = event.currentTarget;

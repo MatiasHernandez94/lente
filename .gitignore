@@ -58,3 +58,6 @@ __pycache__/
 scripts/sports/*.pt
 /*.pt
 .python */
+
+# modelos descargados (assets locales, no van al repo)
+scripts/sports/models/*.task

@@ -3,6 +3,7 @@ import { AIQuotaError, type AIProvider } from "./types";
 import type {
   CoachChatContext,
   CoachContext,
+  CoachReportDrill,
   CoachReportResult,
   FrameImage,
   ImprovementsContext,
@@ -11,6 +12,7 @@ import type {
   SportDetectionResult,
 } from "./types";
 import { SPORT_LABEL, SPORTS } from "@/lib/sports";
+import { sportKnowledgeBlock, sportVisualClues } from "@/lib/sports/domain";
 import type { Sport } from "@/lib/analysis/types";
 
 const VALID_SPORTS = SPORTS.map((s) => s.value);
@@ -176,6 +178,9 @@ Determiná qué deporte se está practicando. Solo podés elegir UNO de estos va
 - "general" si no se puede identificar un deporte específico (entrenamiento libre, gimnasio, sin contexto claro).
 - "futbol", "padel", "voleibol" o "baloncesto" si las evidencias lo confirman.
 
+PISTAS VISUALES POR DEPORTE:
+${SPORTS.filter((s) => s.value !== "general").map((s) => `- ${s.label}: ${sportVisualClues(s.value)}`).join("\n")}
+
 Respondé EXACTAMENTE en este formato JSON (sin markdown, sin texto extra):
 {"sport": "uno_de_los_valores", "confidence": 0..1, "reason": "explicación breve en español de qué viste"}
 
@@ -212,6 +217,9 @@ function buildImprovementsPrompt(ctx: ImprovementsContext): string {
 Deporte: ${SPORT_LABEL[ctx.sport]} (modo ${ctx.mode === "team" ? "equipo" : "individual"})
 Video: "${ctx.videoTitle}"
 
+CONOCIMIENTO DEL DEPORTE (usalo como referencia táctica y de técnica):
+${sportKnowledgeBlock(ctx.sport)}
+
 MÉTRICAS DETECTADAS:
 ${metricsBlock}
 
@@ -225,6 +233,8 @@ Reglas:
 - 3 a 5 mejoras como máximo.
 - Basate SOLO en lo que ves y en las métricas. No inventes datos.
 - Si no se pudo medir algo relevante, decilo honestamente en "detail".
+- Si entre las limitaciones hay alertas de desgaste o riesgo de lesión, mencionalas al principio del "summary" y asignale prioridad "alta".
+- Usá el vocabulario del deporte (posiciones, roles, sistemas) que ves arriba, no vocabulario genérico.
 - En español rioplatense, tono de entrenador. JSON sin markdown.`;
 }
 
@@ -269,6 +279,9 @@ Deporte: ${SPORT_LABEL[ctx.sport]} (modo ${ctx.mode === "team" ? "equipo" : "ind
 Video: "${ctx.videoTitle}"
 Duración: ${ctx.durationSeconds ?? "desconocida"} segundos
 
+CONOCIMIENTO DEL DEPORTE (usalo como referencia táctica y de técnica):
+${sportKnowledgeBlock(ctx.sport)}
+
 MÉTRICAS DETECTADAS:
 ${metricsBlock}
 
@@ -281,13 +294,15 @@ ${limitationsBlock}
 FOTOGRAMAS RECIBIDOS: acá están representados en orden con su marca de tiempo.
 
 Respondé EXACTAMENTE en JSON (sin markdown, sin texto extra):
-{"summary": "resumen de 2-3 oraciones del partido/sesión", "positives": [{"title": "corto", "detail": "explicación de la situación táctica y por qué es un punto fuerte", "time_s": segundos_enteros_o_null}], "improvements": [{"title": "corto", "detail": "explicación de qué hacer distinto, cómo y por qué", "time_s": segundos_enteros_o_null}]}
+{"summary": "resumen de 2-3 oraciones del partido/sesión", "positives": [{"title": "corto", "detail": "explicación de la situación táctica y por qué es un punto fuerte", "time_s": segundos_enteros_o_null}], "improvements": [{"title": "corto", "detail": "explicación de qué hacer distinto, cómo y por qué", "time_s": segundos_enteros_o_null}], "plan": [{"title": "corto", "detail": "ejercicio o cue de entrenamiento concreto"}]}
 
 Reglas:
-- 3 a 5 positives y 3 a 5 improvements.
+- 3 a 5 positives, 3 a 5 improvements y 2 a 3 elementos de "plan".
 - En "time_s" usá SIEMPRE un segundo exacto que exista en la línea de tiempo de eventos (mm:ss → segundos), así el usuario puede ir a ese momento del video. Si una observación es general y no corresponde a un evento específico, poné null.
 - Basate SOLO en los fotogramas, las métricas y la línea de tiempo. No inventes jugadas que no están.
-- Sé específico y táctico: referite a lo que se ve (espacios, posiciones, parejas de pádel, cobertura del partner, presión, transiciones, desgaste físico). Ejemplo válido: "en el minuto 3:05 deberías haber quedado más cerrado con tu partner al fondo para no dejar corto el globo".
+- Sé específico y táctico: usá las posiciones, roles y conceptos del CONOCIMIENTO DEL DEPORTE de arriba (por ejemplo, en baloncesto hablá de box out, ayudas, pick & roll y espaciado; en pádel de cuadrar con la pareja y cubrir el medio).
+- "plan" es el plan de corrección: 2 a 3 ejercicios o frases cortas de entrenamiento para atacar los problemas que encontraste.
+- Si entre las limitaciones aparece un riesgo de lesión o desgaste severo, ponelo primero en el "summary" antes que las mejoras tácticas.
 - En español rioplatense, tono de entrenador directo pero constructivo.`;
 }
 
@@ -299,7 +314,19 @@ function parseCoachReportResponse(text: string, durationSeconds: number | null):
   const summary = String(parsed.summary ?? "Informe sin resumen.").trim();
   const positives = sanitizeCoachPoints(parsed.positives, durationSeconds);
   const improvements = sanitizeCoachPoints(parsed.improvements, durationSeconds);
-  return { summary, positives, improvements };
+  const plan = sanitizeDrills(parsed.plan);
+  return plan.length > 0 ? { summary, positives, improvements, plan } : { summary, positives, improvements };
+}
+
+function sanitizeDrills(raw: unknown): CoachReportDrill[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item: Record<string, unknown>) => ({
+      title: String(item?.title ?? "").trim(),
+      detail: String(item?.detail ?? "").trim(),
+    }))
+    .filter((drill: CoachReportDrill) => drill.title && drill.detail)
+    .slice(0, 3);
 }
 
 function sanitizeCoachPoints(
@@ -339,7 +366,13 @@ RESUMEN: ${ctx.report.summary}
 COSAS QUE SE HACEN BIEN:
 ${ctx.report.positives.map((p) => `- ${p.title} (${p.time_s != null ? formatCoachTime(p.time_s) : "general"}): ${p.detail}`).join("\n")}
 PARA MEJORAR:
-${ctx.report.improvements.map((p) => `- ${p.title} (${p.time_s != null ? formatCoachTime(p.time_s) : "general"}): ${p.detail}`).join("\n")}`
+${ctx.report.improvements.map((p) => `- ${p.title} (${p.time_s != null ? formatCoachTime(p.time_s) : "general"}): ${p.detail}`).join("\n")}${
+        ctx.report.plan && ctx.report.plan.length > 0
+          ? `
+PLAN DE CORRECCIÓN:
+${ctx.report.plan.map((d) => `- ${d.title}: ${d.detail}`).join("\n")}`
+          : ""
+      }`
     : "Aún no se generó un informe táctico. Respondé con lo que puedas deducir de los datos sin inventar.";
 
   const historyBlock =
@@ -350,6 +383,8 @@ ${ctx.report.improvements.map((p) => `- ${p.title} (${p.time_s != null ? formatC
   return `Sos un coach deportivo virtual de Lente especializado en ${sportName}. Respondés en español rioplatense, como un entrenador directo pero motivador, y usás TUS datos para responder.
 
 Video: "${ctx.videoTitle}"
+CONOCIMIENTO DEL DEPORTE (para usar vocabulario correcto):
+${sportKnowledgeBlock(ctx.sport, true)}
 CONVERSACIÓN ANTERIOR:
 ${historyBlock}
 

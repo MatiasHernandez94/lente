@@ -14,6 +14,8 @@ import { readJsonBody, sportsOptionsSchema } from "@/lib/validation/api";
 import { sendAlert } from "@/lib/alerts";
 import { isProgressFresh, parseProgress, type JobProgress } from "@/lib/job-progress";
 import type { ProcessingJobRow } from "@/lib/schema";
+import { getVideoAIInsight } from "@/lib/ai/video-agent";
+import type { ReportInsights } from "@/lib/analysis/insights";
 
 /**
  * Progreso publicado por el worker, si sigue siendo fresco. Un progreso viejo
@@ -64,7 +66,17 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/videos/[
       return NextResponse.json({ status: "none" });
     }
 
-    return NextResponse.json({ status: "ready", analysis });
+    const ai = await getVideoAIInsight(id).catch(() => null);
+    const insights: ReportInsights | null =
+      ai && (ai.sport_detection || ai.improvements || ai.coach_report)
+        ? {
+            sport_detection: (ai.sport_detection as ReportInsights["sport_detection"]) ?? null,
+            improvements: (ai.improvements as ReportInsights["improvements"]) ?? null,
+            coach_report: (ai.coach_report as ReportInsights["coach_report"]) ?? null,
+          }
+        : null;
+
+    return NextResponse.json({ status: "ready", analysis, insights, role: user.rol });
   } catch (error) {
     return serializeError(error);
   }

@@ -14,14 +14,20 @@ export function LiveFeedbackOverlay({ feedback }: Props) {
   useEffect(() => {
     if (!feedback) return;
 
-    setCurrent(feedback);
-    setVisible(true);
+    // defer to avoid cascading renders in some strict modes
+    const id = setTimeout(() => {
+      setCurrent(feedback);
+      setVisible(true);
+    }, 0);
+    return () => clearTimeout(id);
 
     const timer = setTimeout(() => {
       setVisible(false);
     }, 3000);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+    };
   }, [feedback]);
 
   if (!current || !visible) return null;

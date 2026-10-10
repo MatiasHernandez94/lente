@@ -259,17 +259,26 @@ def analyze_transitions(frames, min_gap_frames=10):
     return transitions
 
 
-def run_tactical_analysis(tracking_data):
-    """Main tactical analysis pipeline."""
+def run_tactical_analysis(tracking_data, sport="general"):
+    """Main tactical analysis pipeline.
+
+    `sport` gobierna qué secciones tienen sentido: las formaciones de ejemplo
+    (4-3-3, 4-4-2, ...) son tácticas de fútbol sobre una cancha de 105x68 m, así
+    que sólo se calculan cuando el análisis corresponde a fútbol. Para básquet
+    y otros deportes esa sección queda vacía en vez de emitir basura.
+    """
     frames = tracking_data.get("frames", [])
     print(f"Analyzing {len(frames)} frames...")
 
-    # Detect formations for each team
+    # Detect formations for each team (solo tiene sentido en fútbol)
     formations = {}
-    for team_id in [0, 1]:
-        formation = detect_formation(frames, team_id)
-        if formation:
-            formations[f"team_{team_id}"] = formation
+    if sport == "futbol":
+        for team_id in [0, 1]:
+            formation = detect_formation(frames, team_id)
+            if formation:
+                formations[f"team_{team_id}"] = formation
+    else:
+        print("Formaciones no aplicables a este deporte: se omite (solo fútbol).")
 
     # Generate heatmaps
     heatmaps = {}
@@ -320,10 +329,14 @@ def main():
     parser = argparse.ArgumentParser(description="Tactical analysis from tracking data")
     parser.add_argument("tracking", help="Path to tracking JSON")
     parser.add_argument("--output", "-o", help="Output JSON path")
+    parser.add_argument(
+        "--sport", default="general",
+        help="Deporte del análisis; las formaciones sólo se calculan con futbol",
+    )
     args = parser.parse_args()
 
     tracking_data = load_tracking(args.tracking)
-    output = run_tactical_analysis(tracking_data)
+    output = run_tactical_analysis(tracking_data, args.sport)
 
     output_path = args.output or "tactical.json"
     with open(output_path, "w") as f:

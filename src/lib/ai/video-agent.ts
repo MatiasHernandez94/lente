@@ -149,14 +149,46 @@ function summarizeAnalysisForAgent(video: VideoRow, analysis: Record<string, unk
       value: String(tracking.summary.total_players_detected ?? 0),
       unit: "jugadores",
     });
+    const teams = tracking.summary.teams;
+    if (teams && (teams.team_0 ?? 0) > 0 && (teams.team_1 ?? 0) > 0) {
+      metrics.push({ label: "Conteo por equipo", value: `${teams.team_0} vs ${teams.team_1}`, unit: "trazas" });
+    }
   }
-  const tactical = analysis.tactical as { formations?: Record<string, { formation?: string }> } | undefined;
+  const tactical = analysis.tactical as { formations?: Record<string, { formation?: string }>; possession?: Record<string, number>; pressing?: Record<string, unknown>; transitions?: { total?: number } } | undefined;
   if (tactical?.formations?.team_0?.formation) {
     metrics.push({
       label: "Formación equipo A",
       value: tactical.formations.team_0.formation,
       unit: "",
     });
+  }
+  if (tactical?.formations?.team_1?.formation) {
+    metrics.push({
+      label: "Formación equipo B",
+      value: tactical.formations.team_1.formation,
+      unit: "",
+    });
+  }
+  const possession0 = tactical?.possession?.team_0;
+  const possession1 = tactical?.possession?.team_1;
+  if (typeof possession0 === "number" && typeof possession1 === "number") {
+    metrics.push({
+      label: "Posesión",
+      value: `${possession0.toFixed(1)}% / ${possession1.toFixed(1)}%`,
+      unit: "equipo A/B",
+    });
+  }
+  if (typeof tactical?.transitions?.total === "number" && tactical.transitions.total > 0) {
+    metrics.push({ label: "Transiciones", value: String(tactical.transitions.total), unit: "eventos" });
+  }
+  if (tactical?.pressing) {
+    for (const [team, data] of Object.entries(tactical.pressing)) {
+      if (typeof data !== "object" || data === null) continue;
+      const attempts = (data as Record<string, unknown>).attempts ?? (data as Record<string, unknown>).count;
+      if (typeof attempts === "number") {
+        metrics.push({ label: `Presión ${team === "team_0" ? "equipo A" : "equipo B"}`, value: String(attempts), unit: "intentos" });
+      }
+    }
   }
   const events = analysis.events as { total_events?: number; event_summary?: Record<string, number> } | undefined;
   if (typeof events?.total_events === "number") {
@@ -171,6 +203,48 @@ function summarizeAnalysisForAgent(video: VideoRow, analysis: Record<string, unk
     metrics.push({ label: "Repeticiones", value: String(solo.repetitions.count), unit: "" });
   }
 
+  // Métricas y limitaciones específicas del deporte (ej. básquet: botes,
+  // jugador con más posesión, canasta no detectada). Antes se descartaban y el
+  // modelo razonaba sin los números que el pipeline sí calculó.
+  const sportSpecific = analysis.sport_specific as
+    | { sport?: string; metrics?: Array<{ metric?: string; value?: number | string | null; unit?: string | null }>; limitations?: string[] }
+    | null
+    | undefined;
+  if (sportSpecific?.metrics) {
+    for (const m of sportSpecific.metrics) {
+      const label = m.metric ? m.metric.replace(/_/g, " ") : "";
+      if (!label || m.value == null) continue;
+      metrics.push({
+        label: label.charAt(0).toUpperCase() + label.slice(1),
+        value: String(m.value),
+        unit: m.unit ?? "",
+      });
+    }
+  }
+  if (Array.isArray(sportSpecific?.limitations)) {
+    for (const limitation of sportSpecific.limitations) {
+      if (typeof limitation === "string" && limitation.trim()) {
+        limitations.push(limitation);
+      }
+    }
+  }
+
+  // Desgaste físico / riesgo (fatiga) para que el modelo priorice alertas.
+  const fatigue = analysis.fatigue as { summary?: { fatigued_players?: number; total_injury_risks?: number; high_severity_risks?: number } } | undefined;
+  if (fatigue?.summary) {
+    if (typeof fatigue.summary.fatigued_players === "number" && fatigue.summary.fatigued_players > 0) {
+      metrics.push({ label: "Jugadores fatigados", value: String(fatigue.summary.fatigued_players), unit: "jugadores" });
+    }
+    if (typeof fatigue.summary.total_injury_risks === "number" && fatigue.summary.total_injury_risks > 0) {
+      metrics.push({ label: "Riesgos de lesión", value: String(fatigue.summary.total_injury_risks), unit: "eventos" });
+    }
+    if (typeof fatigue.summary.high_severity_risks === "number" && fatigue.summary.high_severity_risks > 0) {
+      limitations.push(
+        `${fatigue.summary.high_severity_risks} riesgo(s) de lesión de severidad alta detectados: priorizá comunicar el desgaste antes que las mejoras tácticas.`,
+      );
+    }
+  }
+
   // Limitaciones detectadas por el pipeline
   if (!solo && !tactical?.formations?.team_0) {
     limitations.push(
@@ -179,6 +253,15 @@ function summarizeAnalysisForAgent(video: VideoRow, analysis: Record<string, unk
   }
   if (analysis.mode === "solo" && (!solo?.intensity?.score || solo?.intensity?.score === 0)) {
     limitations.push("No se pudo calcular la intensidad porque no hay datos suficientes de movimiento.");
+  }
+
+  // Ruido de identidad: sin re-identificación, un jugador real genera muchas
+  // trazas cortas. Ayuda al modelo a no tratar "1339 jugadores" como literal.
+  const totalTracks = tracking?.summary?.total_players_detected ?? 0;
+  if (analysis.mode === "team" && totalTracks > 40) {
+    limitations.push(
+      `Se detectaron ${totalTracks} trazas cortas (sin re-identificación por dorsal). Representan ~${Math.min(10, totalTracks)} jugadores reales por momento; usá métricas relativas, no el conteo absoluto.`,
+    );
   }
 
   return { metrics, limitations };
@@ -240,6 +323,8 @@ export interface CoachReportVisionResult {
   summary: string;
   positives: Array<{ title: string; detail: string; time_s: number | null }>;
   improvements: Array<{ title: string; detail: string; time_s: number | null }>;
+  /** Plan de corrección: cues/ejercicios accionables (opcional). */
+  plan?: Array<{ title: string; detail: string }>;
   provider: string;
 }
 
@@ -302,6 +387,7 @@ export async function generateCoachChatAnswer(
           summary: report.summary,
           positives: report.positives,
           improvements: report.improvements,
+          plan: report.plan,
         }
       : null,
     history,

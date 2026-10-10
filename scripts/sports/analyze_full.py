@@ -93,7 +93,7 @@ def run_full_analysis(video_path, output_path=None, sample_fps=5, sport="general
         write_progress(progress_path, "Calculando métricas del deporte", 92, 100)
         with ThreadPoolExecutor(max_workers=3) as executor:
             future_events = executor.submit(detect_events, tracking_data=tracking_data)
-            future_tactical = executor.submit(run_tactical_analysis, tracking_data)
+            future_tactical = executor.submit(run_tactical_analysis, tracking_data, sport)
             future_fatigue = executor.submit(run_fatigue_detection, tracking_data)
 
             events = future_events.result()

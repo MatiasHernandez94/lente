@@ -45,7 +45,7 @@ export default function TerminosPage() {
 
         <h2 className="text-base font-semibold text-ink">5. Uso del servicio</h2>
         <p>
-          El servicio no sustituye el criterio de un profesional de la salud ni de un entrenador titulado.
+          El servicio no sustituye el &quot;criterio&quot; de un profesional de la salud ni de un entrenador titulado.
           Las métricas generadas son orientativas y deben interpretarse con juicio.
         </p>
 

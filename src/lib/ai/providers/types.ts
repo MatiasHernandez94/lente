@@ -70,10 +70,17 @@ export interface CoachReportPoint {
   time_s: number | null;
 }
 
+export interface CoachReportDrill {
+  title: string;
+  detail: string;
+}
+
 export interface CoachReportResult {
   summary: string;
   positives: CoachReportPoint[];
   improvements: CoachReportPoint[];
+  /** Plan de corrección: cues/ejercicios accionables (opcional). */
+  plan?: CoachReportDrill[];
 }
 
 export interface CoachContext {

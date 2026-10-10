@@ -68,6 +68,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/videos/[
         summary: String(report.summary ?? ""),
         positives: sanitizePoints(report.positives),
         improvements: sanitizePoints(report.improvements),
+        plan: sanitizeDrills(report.plan),
         provider: String(report.provider ?? ""),
         cached: true,
       };
@@ -107,4 +108,16 @@ function sanitizePoints(raw: unknown): Array<{ title: string; detail: string; ti
     }))
     .filter((point) => point.title && point.detail)
     .slice(0, 5);
+}
+
+function sanitizeDrills(raw: unknown): Array<{ title: string; detail: string }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((item) => ({
+      title: String(item.title ?? "").trim(),
+      detail: String(item.detail ?? "").trim(),
+    }))
+    .filter((drill) => drill.title && drill.detail)
+    .slice(0, 3);
 }
