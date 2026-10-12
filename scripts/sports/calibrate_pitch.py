@@ -56,10 +56,13 @@ def classify_lines(lines, frame_shape):
         return horizontal, vertical, diagonal
 
     for line in lines:
-        x1, y1, x2, y2 = line[0]
+        if isinstance(line, np.ndarray) and line.ndim == 2:
+            x1, y1, x2, y2 = line[0]
+        else:
+            x1, y1, x2, y2 = line
         dx = x2 - x1
         dy = y2 - y1
-        length = math.sqrt(dx * dx + dy * dy)
+        length = math.hypot(dx, dy)
 
         if length < 30:
             continue
