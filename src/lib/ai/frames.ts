@@ -43,7 +43,7 @@ export async function extractVideoFrames(
 
   const durationArg = await probeDuration(videoPath, ffmpeg);
   // Extraer frames distribuidos: fps tal que obtengamos ~count frames.
-  const targetFps = count / Math.max(1, durationArg);
+  const targetFps = Math.min(Math.max(0.5, count / Math.max(1, durationArg)), 1.0);
   const fpsFilter = `fps=${targetFps.toFixed(4)}`;
 
   try {

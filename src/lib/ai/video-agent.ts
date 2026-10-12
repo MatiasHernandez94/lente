@@ -79,7 +79,7 @@ async function extractFramesForAI(video: VideoRow): Promise<FramesResult> {
     );
   }
   try {
-    const frames = await extractVideoFrames(videoPath, { count: 4, maxWidth: 640 });
+    const frames = await extractVideoFrames(videoPath, { count: 4, maxWidth: 512 });
     if (frames.length === 0) {
       throw new AIActionError(
         "frames_unavailable",
