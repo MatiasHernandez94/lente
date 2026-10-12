@@ -49,7 +49,11 @@ export function VideoSeekProvider({ children }: { children: ReactNode }) {
 export function useVideoSeek(): VideoSeekApi {
   const context = useContext(VideoSeekContext);
   if (!context) {
-    throw new Error("useVideoSeek debe usarse dentro de <VideoSeekProvider>.");
+    return {
+      register: () => {},
+      seekTo: () => false,
+      seekable: false,
+    };
   }
   return context;
 }
