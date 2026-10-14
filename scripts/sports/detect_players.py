@@ -32,6 +32,8 @@ SAMPLE_FPS = 5  # frames per second to process (lower = faster)
 YOLO_MODEL = os.environ.get("LENTE_YOLO_MODEL", "yolov8s.pt")  # Default: yolov8s for speed/accuracy balance
 MAX_INFER_WIDTH = 1280  # Downscale to this width before YOLO inference
 KMEANS_INTERVAL = 10  # Run KMeans every N frames (reuses previous assignment otherwise)
+MAX_TRACK_MISSES = 15  # samples consecutivos sin match antes de pasar a re-ID (~3s a 5fps)
+MAX_PLAUSIBLE_MPS = 12.0  # techo de velocidad humana: sobre esto es salto de identidad, no se suma distancia
 
 
 def load_model():
