@@ -44,7 +44,11 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/videos/[
       throw new ApiServiceError(404, "El video no existe o no corresponde al usuario.");
     }
 
-    const analysis = await getSportAnalysis(id);
+    // Los frames por muestra son multi-MB de ruido para todo lo que no sea el
+    // overlay de video: la vista principal pide solo métricas.
+    const analysis = await getSportAnalysis(id, {
+      includeFrames: request.nextUrl.searchParams.get("include") === "frames",
+    });
     if (!analysis) {
       const activeJob = await getActiveProcessingJob(id, "sports").catch(() => null);
       const latestJob = activeJob ? null : await getLatestProcessingJob(id, "sports").catch(() => null);
@@ -68,11 +72,12 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/videos/[
 
     const ai = await getVideoAIInsight(id).catch(() => null);
     const insights: ReportInsights | null =
-      ai && (ai.sport_detection || ai.improvements || ai.coach_report)
+      ai && (ai.sport_detection || ai.improvements || ai.coach_report || ai.motor_audit)
         ? {
             sport_detection: (ai.sport_detection as ReportInsights["sport_detection"]) ?? null,
             improvements: (ai.improvements as ReportInsights["improvements"]) ?? null,
             coach_report: (ai.coach_report as ReportInsights["coach_report"]) ?? null,
+            motor_audit: (ai.motor_audit as ReportInsights["motor_audit"]) ?? null,
           }
         : null;
 

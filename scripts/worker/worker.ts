@@ -7,6 +7,30 @@ import { sportsOptionsSchema, validateInput } from "@/lib/validation/api";
 import { sendAlert } from "@/lib/alerts";
 import { currentWorkerId, readWorkerHeartbeat, writeWorkerHeartbeat } from "@/lib/heartbeat";
 import { AIActionError, detectSportWithVision, generateCoachReportWithVision, generateImprovementsWithVision, saveVideoAIInsight } from "@/lib/ai/video-agent";
+import type { AuditResult } from "@/lib/analysis/audit";
+
+/**
+ * La auditoría determinista se guarda tal cual (findings, coverage, confianza)
+ * para que la UI pueda mostrar por qué el análisis dice lo que dice. El JSON se
+ * persiste plano, así que va sin la referencia al tipo.
+ */
+function serializeAudit(audit: AuditResult): Record<string, unknown> {
+  return {
+    sport: audit.sport,
+    mode: audit.mode,
+    findings: audit.findings,
+    issues: audit.issues.map(({ key, label, value, status, implication }) => ({
+      key,
+      label,
+      value,
+      status,
+      implication,
+    })),
+    coverage: audit.coverage,
+    confidence: audit.confidence,
+    confidenceReason: audit.confidenceReason,
+  };
+}
 
 // ── Env loading ────────────────────────────────────────────────────────────────
 // tsx no carga .env.local por defecto; acá lo hacemos manual (como run-migrations).
@@ -66,8 +90,33 @@ async function processJob(job: { id: string; videoId: string; kind: string; payl
 
   if (job.kind === "coach-report") {
     const { getSportAnalysis } = await import("@/lib/sports/service");
+    const { runMotorAudit } = await import("@/lib/ai/video-agent");
     const analysis = await getSportAnalysis(video.id);
-    const result = await generateCoachReportWithVision(video, (analysis ?? null) as Record<string, unknown> | null);
+
+    // Pasada 1: audita las métricas contra rangos de referencia, clasifica la
+    // falla y elige la corrección más crítica. Se guarda aunque falle la
+    // pasada 2: el veredicto sirve aunque el informe no llegue a generarse.
+    let verdict: Awaited<ReturnType<typeof runMotorAudit>> | null = null;
+    try {
+      verdict = await runMotorAudit(video, (analysis ?? null) as Record<string, unknown> | null);
+      await saveVideoAIInsight(video.id, "motor_audit", {
+        ...verdict,
+        audit: serializeAudit(verdict.audit),
+        at: new Date().toISOString(),
+      });
+    } catch (error) {
+      // La auditoría determinista sigue siendo útil aunque falle el juicio del
+      // modelo: se guarda sin el veredicto y el informe razona desde las métricas.
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[worker] motor_audit falló para ${video.id}: ${message}`);
+    }
+
+    // Pasada 2: el informe desarrolla el veredicto en vez de re-razonarlo.
+    const result = await generateCoachReportWithVision(
+      video,
+      (analysis ?? null) as Record<string, unknown> | null,
+      verdict,
+    );
     await saveVideoAIInsight(video.id, "coach_report", { ...result, at: new Date().toISOString() });
     return;
   }

@@ -8,8 +8,10 @@ import {
   CoachReportVisionResult,
   generateCoachReportWithVision,
   getVideoAIInsight,
+  runMotorAudit,
   saveVideoAIInsight,
 } from "@/lib/ai/video-agent";
+import type { AuditVerdict } from "@/lib/ai/providers/types";
 import { ApiServiceError } from "@/lib/services/videoService";
 import { getActiveProcessingJob, getLatestProcessingJob, isProcessorQueueEnabled, enqueueProcessingJob } from "@/lib/processor";
 import { resolveJobViewStatus, jobErrorMessage } from "@/lib/processor-status";
@@ -34,7 +36,26 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/videos/
     }
 
     const analysis = await getSportAnalysis(id);
-    const result = await generateCoachReportWithVision(video, (analysis ?? null) as Record<string, unknown> | null);
+
+    // Mismo flujo de dos pasadas que el worker: auditar, clasificar y elegir la
+    // corrección crítica antes de redactar el informe. Si la pasada 1 falla, el
+    // informe se genera igual razonando desde las métricas.
+    let verdict: AuditVerdict | null = null;
+    try {
+      verdict = await runMotorAudit(video, (analysis ?? null) as Record<string, unknown> | null);
+      await saveVideoAIInsight(video.id, "motor_audit", {
+        ...verdict,
+        at: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error(`[coach/report] auditoría falló para ${id}:`, error instanceof Error ? error.message : error);
+    }
+
+    const result = await generateCoachReportWithVision(
+      video,
+      (analysis ?? null) as Record<string, unknown> | null,
+      verdict,
+    );
     await saveVideoAIInsight(video.id, "coach_report", { ...result, at: new Date().toISOString() });
 
     const body: CoachReportApiResponse = { ...result, cached: false };

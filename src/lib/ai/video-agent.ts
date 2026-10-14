@@ -6,17 +6,28 @@ import type { VideoRow } from "@/lib/schema";
 import type { Sport } from "@/lib/analysis/types";
 import { updateVideo } from "@/lib/repo";
 import { extractVideoFrames, type ExtractedFrame } from "./frames";
-import { AIQuotaError, type AIProvider } from "./providers/types";
+import { AIQuotaError, type AIProvider, type AuditContext, type AuditVerdict } from "./providers/types";
 import { getAIProviderRouter } from "./providers/router";
 import type { ImprovementsResult } from "./providers/types";
 import { downloadVideoFromStorage, readAnalysisFromStorage, saveAnalysisToStorage } from "@/lib/videos/storage";
 import { downloadYouTubeVideo } from "@/lib/videos/youtube";
 import { buildCoachTimeline } from "./coach";
+import { sportKnowledgeBlock } from "@/lib/sports/domain";
+import { auditAnalysis, formatAuditCompact, type AuditResult } from "@/lib/analysis/audit";
+import { formatLearningsForPrompt, getRelevantLearnings, saveUserFeedback } from "@/lib/coach/learnings";
 import { sendAlert } from "@/lib/alerts";
 
 const UPLOADS_DIR = join(process.cwd(), "data", "uploads");
 const AI_RESULTS_DIR = join(process.cwd(), "data", "sports-analysis");
 export const AI_INSIGHT_FILE = (videoId: string) => join(AI_RESULTS_DIR, `${videoId}.ai.json`);
+
+// ── Configuración de visión ──
+// Los cuatro momentos del video viajan como un mosaico de celdas de este ancho.
+// Con 384px el mosaico completo queda en 768×768 (un tile de Gemini), así que el
+// costo de visión es el de UNA imagen en lugar de cuatro. Si algún análisis
+// necesita más detalle postural, se sube el ancho de celda por entorno.
+const AI_FRAME_COUNT = 4;
+const AI_FRAME_CELL_WIDTH = Number(process.env.LENTE_AI_FRAME_WIDTH ?? 384);
 
 export type AIActionErrorKind = "no_keys" | "quota" | "video_unavailable" | "frames_unavailable";
 
@@ -67,8 +78,15 @@ interface FramesResult {
 }
 
 /**
- * Extrae fotogramas para IA. En local usa el archivo de data/uploads; en
- * entornos sin el archivo devuelve error para que la UI explique por qué no se pudo.
+ * Extrae fotogramas para IA.
+ *
+ * En local usa el archivo de data/uploads; en entornos sin el archivo devuelve
+ * error para que la UI explique por qué no se pudo.
+ *
+ * Los cuatro momentos del video viajan como UN mosaico 2×2 en lugar de cuatro
+ * imágenes sueltas. El ahorro real no es de overhead (los tokens de visión se
+ * cobran por píxeles) sino de resolución total: el mosaico permite achicar cada
+ * celda manteniendo los cuatro momentos, bajando el costo de visión unas 4x.
  */
 async function extractFramesForAI(video: VideoRow): Promise<FramesResult> {
   const videoPath = await resolveLocalVideo(video);
@@ -79,7 +97,10 @@ async function extractFramesForAI(video: VideoRow): Promise<FramesResult> {
     );
   }
   try {
-    const frames = await extractVideoFrames(videoPath, { count: 4, maxWidth: 512 });
+    const frames = await extractVideoFrames(videoPath, {
+      count: AI_FRAME_COUNT,
+      gridCellWidth: AI_FRAME_CELL_WIDTH,
+    });
     if (frames.length === 0) {
       throw new AIActionError(
         "frames_unavailable",
@@ -195,9 +216,26 @@ function summarizeAnalysisForAgent(video: VideoRow, analysis: Record<string, unk
     metrics.push({ label: "Eventos deportivos", value: String(events.total_events), unit: "eventos" });
   }
 
-  const solo = analysis.solo as { intensity?: { score?: number }; repetitions?: { count?: number } } | undefined;
-  if (solo?.intensity?.score != null) {
+  const solo = analysis.solo as
+    | {
+        intensity?: { level?: string; score?: number };
+        rhythm?: {
+          rhythm_detected?: boolean;
+          frequency_rpm?: number;
+          consistency?: number;
+          oscillation_amplitude_m?: number;
+        };
+        repetitions?: { repetitions_detected?: boolean; count?: number; frequency_rpm?: number };
+        movement?: { pattern?: string };
+        detailed?: Record<string, unknown>;
+        narrative?: string;
+      }
+    | undefined;
+  if (typeof solo?.intensity?.score === "number") {
     metrics.push({ label: "Intensidad", value: String(Math.round(solo.intensity.score)), unit: "/100" });
+  }
+  if (typeof solo?.intensity?.level === "string") {
+    metrics.push({ label: "Nivel de intensidad", value: solo.intensity.level.replace("_", " "), unit: "" });
   }
   if (typeof solo?.repetitions?.count === "number") {
     metrics.push({ label: "Repeticiones", value: String(solo.repetitions.count), unit: "" });
@@ -229,6 +267,119 @@ function summarizeAnalysisForAgent(video: VideoRow, analysis: Record<string, unk
     }
   }
 
+  // ── Contexto del deporte y de la escena ──
+  // El deporte declarado es el contexto que el usuario eligió: define qué
+  // métricas tienen sentido. Un video de saltar la cuerda no se evalúa con
+  // posesión ni formaciones, y el modelo necesita que le digamos eso.
+  const declaredSport = typeof analysis.sport === "string" ? analysis.sport : video.sport;
+  const sportMetrics = analysis.sport_metrics as
+    | Record<string, unknown>
+    | null
+    | undefined;
+  if (sportMetrics) {
+    for (const [key, value] of Object.entries(sportMetrics)) {
+      if (value == null || typeof value === "object" || key === "player_label") continue;
+      const label = key
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+      metrics.push({ label, value: String(value), unit: "" });
+    }
+  }
+  const scale = analysis.scale as
+    | { meters_per_pixel?: number; reference_person_m?: number; confidence?: string; method?: string }
+    | null
+    | undefined;
+  if (scale?.meters_per_pixel) {
+    metrics.push({
+      label: "Escala de calibración",
+      value: `${scale.meters_per_pixel.toFixed(5)} m/pixel (altura de persona ${scale.reference_person_m ?? 1.7} m)`,
+      unit: "",
+    });
+    if (scale.confidence === "approx") {
+      limitations.push(
+        "La escala se derivó de la altura aparente del sujeto y es aproximada: las distancias y velocidades tienen margen de error, no las trates como exactas.",
+      );
+    }
+  }
+
+  // Señales de actividad individual profundizadas (tendencia, descansos,
+  // ratio trabajo/descanso). Son la diferencia entre "intensidad 64/100" y
+  // "sostiene el ritmo los primeros 3 minutos y decae un 40% al final".
+  if (solo?.rhythm?.rhythm_detected) {
+    metrics.push({
+      label: "Ritmo del ejercicio",
+      value: `${Math.round(solo.rhythm.frequency_rpm ?? 0)} RPM`,
+      unit: "repeticiones por minuto",
+    });
+    if (solo.rhythm.oscillation_amplitude_m != null) {
+      metrics.push({
+        label: "Amplitud del movimiento",
+        value: `${(solo.rhythm.oscillation_amplitude_m * 100).toFixed(0)} cm`,
+        unit: "",
+      });
+    }
+    if (solo.rhythm.consistency != null) {
+      metrics.push({
+        label: "Consistencia del ritmo",
+        value: `${Math.round(solo.rhythm.consistency * 100)}%`,
+        unit: "",
+      });
+    }
+  }
+  if (solo?.repetitions?.repetitions_detected) {
+    metrics.push({
+      label: "Repeticiones detectadas",
+      value: String(solo.repetitions.count),
+      unit: "",
+    });
+  }
+  const detailed = solo?.detailed;
+  if (detailed) {
+    const trend = detailed.intensity_trend as string | undefined;
+    const change = detailed.intensity_change_pct as number | undefined;
+    if (trend && change != null) {
+      metrics.push({
+        label: "Tendencia de intensidad",
+        value: `${trend} (${change > 0 ? "+" : ""}${change.toFixed(0)}%)`,
+        unit: "inicio vs final",
+      });
+    }
+    if (typeof detailed.rest_periods === "number" && detailed.rest_periods > 0) {
+      metrics.push({
+        label: "Pausas de descanso",
+        value: String(detailed.rest_periods),
+        unit: `de ${(detailed.avg_rest_s as number)?.toFixed?.(1) ?? "?"}s promedio`,
+      });
+      if (detailed.work_rest_ratio != null) {
+        metrics.push({
+          label: "Ratio trabajo/descanso",
+          value: String(detailed.work_rest_ratio),
+          unit: "",
+        });
+      }
+    }
+  }
+  if (solo?.movement?.pattern) {
+    metrics.push({ label: "Patrón de movimiento", value: solo.movement.pattern, unit: "" });
+  }
+  if (typeof analysis.sport_narrative === "string") {
+    metrics.push({ label: "Resumen del pipeline", value: analysis.sport_narrative, unit: "" });
+  }
+
+  // Deporte declarado en lenguaje natural, para que el modelo deje de aplicar
+  // plantillas de fútbol a un video de gimnasio.
+  const SPORT_CONTEXT: Record<string, string> = {
+    general: "actividad individual (ejercicio, fitness, técnica personal). No aplican posesión, formaciones ni tácticas de equipo.",
+    futbol: "fútbol. Aplican posesión, formaciones, presión y transiciones.",
+    padel: "pádel. Aplican red vs fondo, errores no forzados y smash.",
+    voleibol: "voleibol. Aplican remate, bloqueo, recepción y saque.",
+    baloncesto: "baloncesto. Aplican botes, tiro, rebote y transiciones.",
+  };
+  const sportNote = SPORT_CONTEXT[declaredSport];
+  if (sportNote) {
+    limitations.push(`Deporte declarado: ${declaredSport}. Contexto: ${sportNote}`);
+  }
+
   // Desgaste físico / riesgo (fatiga) para que el modelo priorice alertas.
   const fatigue = analysis.fatigue as { summary?: { fatigued_players?: number; total_injury_risks?: number; high_severity_risks?: number } } | undefined;
   if (fatigue?.summary) {
@@ -255,12 +406,20 @@ function summarizeAnalysisForAgent(video: VideoRow, analysis: Record<string, unk
     limitations.push("No se pudo calcular la intensidad porque no hay datos suficientes de movimiento.");
   }
 
-  // Ruido de identidad: sin re-identificación, un jugador real genera muchas
-  // trazas cortas. Ayuda al modelo a no tratar "1339 jugadores" como literal.
+  // Ruido de identidad: el tracker filtra tracks fantasma y artefactos
+  // estáticos, así que el conteo ya es de personas reales. Si aún quedaran
+  // muchas trazas, se avisa para que el modelo use métricas relativas.
   const totalTracks = tracking?.summary?.total_players_detected ?? 0;
+  const rawTracks = (tracking?.summary as { raw_tracks_detected?: number } | undefined)?.raw_tracks_detected ?? totalTracks;
+  const ghosts = (tracking?.summary as { ghost_tracks_filtered?: number } | undefined)?.ghost_tracks_filtered ?? 0;
+  if (ghosts > 0) {
+    limitations.push(
+      `El tracker descartó ${ghosts} trazas de ruido (arteofactos estáticos y detecciones de 1-2 frames) de ${rawTracks} brutas. El conteo de ${totalTracks} es de personas reales en escena, no de frames.`,
+    );
+  }
   if (analysis.mode === "team" && totalTracks > 40) {
     limitations.push(
-      `Se detectaron ${totalTracks} trazas cortas (sin re-identificación por dorsal). Representan ~${Math.min(10, totalTracks)} jugadores reales por momento; usá métricas relativas, no el conteo absoluto.`,
+      `Se detectaron ${totalTracks} trazas (sin re-identificación por dorsal). Representan menos personas reales por momento; usá métricas relativas, no el conteo absoluto.`,
     );
   }
 
@@ -319,6 +478,58 @@ function mapAIError(error: unknown): never {
   );
 }
 
+/**
+ * Pasada 1: auditoría determinista + clasificación del error + selección de la
+ * corrección más crítica.
+ *
+ * La auditoría (paso 2) se resuelve sin IA. El modelo solo juzga (pasos 3 y 4) y
+ * lo hace con la auditoría como ground truth. El veredicto se guarda junto al
+ * análisis y la pasada 2 (informe del coach) lo recibe, así no re-razona desde
+ * cero ni se contradice.
+ */
+export async function runMotorAudit(
+  video: VideoRow,
+  analysis: Record<string, unknown> | null,
+): Promise<AuditVerdict & { provider: string; audit: AuditResult }> {
+  const { frames } = await extractFramesForAI(video);
+  const { metrics, limitations } = summarizeAnalysisForAgent(video, analysis ?? {});
+
+  const mode = String(analysis?.mode ?? "solo") === "team" ? "team" : "solo";
+  const declaredSport = (analysis?.sport === "general" ? video.sport : (analysis?.sport as Sport)) ?? video.sport;
+
+  const audit = auditAnalysis({
+    sport: declaredSport,
+    mode,
+    solo: (analysis?.solo as Record<string, unknown>) ?? null,
+    sport_metrics: (analysis?.sport_metrics as Record<string, unknown>) ?? null,
+    tracking: (analysis?.tracking as { summary?: Record<string, unknown> }) ?? null,
+    duration_s: Number((analysis?.video as { duration_s?: number } | undefined)?.duration_s ?? 0),
+  });
+
+  // Memoria dinámica. Si falla la lectura, el análisis sigue sin ella: es una
+  // mejora, no una dependencia.
+  const learnings = await getRelevantLearnings(declaredSport, null, video.userId);
+  const learningsBlock = formatLearningsForPrompt(learnings);
+
+  const ctx: AuditContext = {
+    videoTitle: video.title,
+    sport: declaredSport,
+    mode,
+    metrics,
+    auditBlock: formatAuditCompact(audit),
+    limitations,
+    knowledgeBlock: sportKnowledgeBlock(declaredSport),
+    // Memoria dinámica: aprendizajes de este deporte. Se buscan DESPUÉS de la
+    // auditoría porque el tipo de falla todavía no se conoce, así que se
+    // recuperan por deporte y el modelo decide cuáles aplican.
+    learningsBlock: learningsBlock,
+    frames: frames.map((f) => ({ base64: f.base64, mimeType: f.mimeType, timeSeconds: f.timeSeconds })),
+  };
+
+  const { result, provider } = await withRouter((p) => p.auditAnalysis(ctx));
+  return { ...result, provider, audit };
+}
+
 export interface CoachReportVisionResult {
   summary: string;
   positives: Array<{ title: string; detail: string; time_s: number | null }>;
@@ -335,6 +546,7 @@ export interface CoachReportVisionResult {
 export async function generateCoachReportWithVision(
   video: VideoRow,
   analysis: Record<string, unknown> | null,
+  audit?: AuditVerdict | null,
 ): Promise<CoachReportVisionResult> {
   const { frames } = await extractFramesForAI(video);
   const { metrics, limitations } = summarizeAnalysisForAgent(video, analysis ?? {});
@@ -348,6 +560,18 @@ export async function generateCoachReportWithVision(
     metrics,
     timeline,
     limitations,
+    // El informe ya no arranca de cero: recibe el veredicto de la pasada 1 y lo
+    // desarrolla. Si no hay veredicto (falló la pasada 1), sigue como antes.
+    audit: audit
+      ? {
+          error_type: audit.error_type,
+          based_on: audit.based_on,
+          critical_fix: audit.critical_fix,
+          discarded: audit.discarded,
+          time_s: audit.time_s,
+          confidence: audit.confidence,
+        }
+      : null,
     frames: frames.map((f) => ({
       base64: f.base64,
       mimeType: f.mimeType,
@@ -405,7 +629,7 @@ export async function generateCoachChatAnswer(
 /** Persiste un resultado de IA junto al análisis deportivo (local + Storage). */
 export async function saveVideoAIInsight(
   videoId: string,
-  kind: "sport_detection" | "improvements" | "coach_report" | "coach_chat",
+  kind: "sport_detection" | "improvements" | "coach_report" | "coach_chat" | "motor_audit",
   payload: Record<string, unknown>,
 ): Promise<void> {
   const existing = await getVideoAIInsight(videoId).catch(() => null);
@@ -477,6 +701,7 @@ type VideoAIInsight = {
   improvements?: Record<string, unknown>;
   coach_report?: Record<string, unknown>;
   coach_chat?: Record<string, unknown>;
+  motor_audit?: Record<string, unknown>;
 };
 
 /** Lee los insights de IA guardados para un video (local + Storage). */
@@ -504,3 +729,4 @@ function safeParseJson<T>(raw: string): T | null {
     return null;
   }
 }
+export { saveUserFeedback };

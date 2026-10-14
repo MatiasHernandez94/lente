@@ -403,7 +403,8 @@ function watchProgress(
 }
 
 export async function getSportAnalysis(
-  videoId: string
+  videoId: string,
+  options: { includeFrames?: boolean } = {}
 ): Promise<SportAnalysisResult | null> {
   const outputPath = getOutputPath(videoId);
   let data: SportAnalysisResult | null = null;
@@ -423,8 +424,15 @@ export async function getSportAnalysis(
 
   if (!data) return null;
 
+  // Los frames por muestra son multi-MB de ruido para todo lo que no sea el
+  // overlay de video. Solo se incluyen cuando el consumidor los pide.
+  if (!options.includeFrames && data.frames) {
+    const { frames: _frames, ...rest } = data;
+    data = rest as SportAnalysisResult;
+  }
+
   // Ensure frames exist for overlay
-  if (!data.frames || !data.frames.length) {
+  if (options.includeFrames && (!data.frames || !data.frames.length)) {
     data.frames = generateSyntheticFrames(data);
     try {
       writeFileSync(outputPath, JSON.stringify(data, null, 2));
