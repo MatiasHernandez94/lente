@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, Upload, SquarePlay, Circle, Square, LoaderCircle } from "lucide-react";
-import type { SourceType } from "@/lib/analysis/types";
+import type { SourceType, Sport } from "@/lib/analysis/types";
 import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
+import { SPORTS } from "@/lib/sports";
 import { uploadVideoFile } from "@/lib/videos/client";
 
 const SOURCES: { value: SourceType; label: string; hint: string; icon: typeof Camera }[] = [
@@ -96,6 +97,7 @@ export function VideoUploadZone() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [source, setSource] = useState<SourceType>("upload");
+  const [sport, setSport] = useState<Sport>("general");
   const [ytUrl, setYtUrl] = useState("");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [cameraBlob, setCameraBlob] = useState<Blob | null>(null);
@@ -152,7 +154,7 @@ export function VideoUploadZone() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title,
-          sport: "general",
+          sport,
           sourceType: source,
           sourceRef,
           durationSeconds: 1800,
@@ -170,7 +172,8 @@ export function VideoUploadZone() {
         throw new Error(err.error ?? "El análisis no se completó.");
       }
 
-      // Auto-trigger sports analysis in background (YOLOv8)
+      // El análisis deportivo arranca solo: el usuario ya eligió el deporte,
+      // que es el contexto con el que se corre. No hay segundo click.
       fetch(`/api/videos/${created.video.id}/sports`, { method: "POST" }).catch(() => {});
 
       router.push(`/app/videos/${created.video.id}`);
@@ -182,9 +185,51 @@ export function VideoUploadZone() {
 
   return (
     <form onSubmit={handleSubmit} className="max-w-2xl space-y-8" noValidate>
-      {/* Source selector */}
+      {/* 01 · Deporte: el contexto que define qué métricas tienen sentido */}
       <section className="space-y-4">
-        <h2 className="text-base font-medium text-ink">¿Cómo querés subir tu video?</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-medium text-ink">01 · ¿Qué deporte o actividad es?</h2>
+          <span className="label text-muted">Define el análisis</span>
+        </div>
+        <div className="grid grid-cols-2 gap-px border border-hairline bg-hairline lg:grid-cols-3">
+          {SPORTS.map((item) => (
+            <label
+              key={item.value}
+              className={`relative cursor-pointer bg-canvas px-4 py-4 transition-colors hover:bg-surface ${
+                sport === item.value ? "ring-inset ring-1 ring-ink" : ""
+              }`}
+            >
+              <input
+                type="radio"
+                name="sport"
+                value={item.value}
+                checked={sport === item.value}
+                onChange={() => setSport(item.value)}
+                className="sr-only"
+              />
+              {sport === item.value ? (
+                <span aria-hidden="true" className="label absolute top-3 right-3 text-ink">
+                  Elegido
+                </span>
+              ) : null}
+              <span className="block text-sm font-medium text-ink">{item.label}</span>
+              <span className="mt-1 block text-[11px] leading-4 text-soft">{item.description}</span>
+            </label>
+          ))}
+        </div>
+        <p className="text-xs leading-5 text-soft">
+          {sport === "general"
+            ? "Análisis individual: ritmo, repeticiones, intensidad y descansos de tu ejercicio."
+            : `Análisis de equipo: ${SPORTS.find((s) => s.value === sport)?.description.toLowerCase()}.`}
+        </p>
+      </section>
+
+      {/* 02 · Fuente del video */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-medium text-ink">02 · ¿Cómo subís el video?</h2>
+          <span className="label text-muted">Archivo · link · cámara</span>
+        </div>
         <div className="grid grid-cols-3 gap-px border border-hairline bg-hairline">
           {SOURCES.map(({ value, label, hint, icon: Icon }) => (
             <label

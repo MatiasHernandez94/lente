@@ -1,8 +1,29 @@
 "use client";
 
-import { AlertTriangle, Award, GraduationCap, Lightbulb, ListChecks, Play, Sparkles } from "lucide-react";
+import {
+  AlertTriangle,
+  Award,
+  Crosshair,
+  Gauge,
+  GraduationCap,
+  Lightbulb,
+  ListChecks,
+  Play,
+  Sparkles,
+} from "lucide-react";
 import type { ReportInsights, ActionItem } from "@/lib/analysis/insights";
 import { useVideoSeek } from "@/components/sports/VideoSeekContext";
+import { FeedbackControls } from "./FeedbackControls";
+
+/** Tipos de falla del paso 3, en lenguaje de entrenador. */
+const ERROR_TYPE_LABEL: Record<string, string> = {
+  postural: "Postura / técnica",
+  timing: "Timing",
+  espacial: "Ubicación / espacio",
+  tactico: "Decisión táctica",
+  condicion_fisica: "Condición física",
+  ninguno: "Sin falla clara",
+};
 
 interface ReportPlayer {
   id: number;
@@ -16,6 +37,7 @@ interface ActionableReportProps {
   insights: ReportInsights | null;
   mode: string;
   sport: string;
+  videoId: string;
   durationSeconds: number;
   eventSummary: Record<string, number>;
   players: ReportPlayer[];
@@ -82,6 +104,7 @@ export function ActionableReport({
   insights,
   mode,
   sport,
+  videoId,
   durationSeconds,
   eventSummary,
   players,
@@ -139,6 +162,13 @@ export function ActionableReport({
   const noiseTrackCount = players.length - activePlayers.length;
   const partialAnalysis = mode !== "solo" && noiseTrackCount > 0;
 
+  // Veredicto de la pasada 1: la corrección más crítica. Se muestra primero y
+  // destacada, porque es lo que el análisis determinó como prioritario tras
+  // auditar las métricas contra rangos de referencia.
+  const audit = insights?.motor_audit;
+  const auditFix = audit?.critical_fix;
+  const auditIssues = audit?.audit?.issues ?? [];
+
   const topPlayers = [...activePlayers]
     .sort((a, b) => b.total_distance_m - a.total_distance_m)
     .slice(0, 3);
@@ -183,6 +213,68 @@ export function ActionableReport({
           </p>
         )}
       </div>
+
+      {/* Corrección prioritaria (pasada 1: auditar → clasificar → elegir UNA) */}
+      {auditFix && auditFix.title && (
+        <div className="border border-ink/20 bg-canvas p-4">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted">
+              <Crosshair size={12} /> Corrección prioritaria
+            </span>
+            {audit?.error_type && audit.error_type !== "ninguno" && (
+              <span className="inline-flex items-center rounded-sm bg-ink/5 px-2 py-0.5 text-[10px] font-medium text-ink">
+                {ERROR_TYPE_LABEL[audit.error_type] ?? audit.error_type}
+              </span>
+            )}
+            {audit?.confidence && audit.confidence !== "alta" && (
+              <span
+                className="inline-flex items-center rounded-sm bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800"
+                title={`Confianza ${audit.confidence}: ${audit.audit?.confidenceReason ?? "datos incompletos"}`}
+              >
+                Confianza {audit.confidence}
+              </span>
+            )}
+          </div>
+          <h3 className="text-[15px] font-medium text-ink">{auditFix.title}</h3>
+          {auditFix.detail && (
+            <p className="mt-1 text-[13px] leading-5 text-muted">{auditFix.detail}</p>
+          )}
+          {auditFix.cue && (
+            <p className="mt-2 border-l-2 border-ink/30 pl-3 text-[13px] font-medium italic text-ink">
+              “{auditFix.cue}”
+            </p>
+          )}
+          {audit?.based_on && (
+            <p className="mt-2 text-[11px] leading-4 text-muted">Basado en: {audit.based_on}</p>
+          )}
+          <FeedbackControls videoId={videoId} />
+        </div>
+      )}
+
+      {/* Calidad de los datos: qué se pudo medir y qué no */}
+      {auditIssues.length > 0 && (
+        <div className="border border-hairline bg-surface p-4">
+          <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-ink">
+            <Gauge size={14} className="text-muted" /> Calidad de los datos
+          </h3>
+          <ul className="space-y-1.5">
+            {auditIssues.slice(0, 4).map((issue) => (
+              <li key={issue.key} className="flex items-start gap-2 text-[12px] leading-5">
+                <span
+                  className={`mt-1.5 inline-block size-1.5 shrink-0 rounded-full ${
+                    issue.status === "no_medible" ? "bg-muted" : "bg-amber-500"
+                  }`}
+                />
+                <span className="text-muted">
+                  <span className="font-medium text-ink">{issue.label}</span>
+                  {issue.status === "no_medible" ? " no se pudo medir" : `: ${issue.value}`} —{" "}
+                  {issue.implication}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Qué mejorar */}
       {uniqueActions.length > 0 && (

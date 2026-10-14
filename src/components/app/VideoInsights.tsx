@@ -12,6 +12,7 @@ import {
   Gauge,
   Info,
   MessageCircle,
+  PauseCircle,
   Play,
   Radio,
   Repeat,
@@ -34,12 +35,15 @@ interface SoloAnalysis {
   activity_detected: boolean;
   duration_s?: number;
   total_distance_m?: number;
+  primary_person_id?: number;
+  total_persons?: number;
   rhythm?: {
     rhythm_detected: boolean;
     frequency_hz?: number;
     frequency_rpm?: number;
     consistency?: number;
     oscillation_amplitude_px?: number;
+    oscillation_amplitude_m?: number;
     oscillation_peaks?: number;
   };
   intensity?: {
@@ -49,6 +53,7 @@ interface SoloAnalysis {
     max_speed_mps?: number;
     active_time_ratio?: number;
     speed_zones?: Record<string, number>;
+    speed_basis?: string;
   };
   movement?: { pattern: string };
   repetitions?: {
@@ -57,8 +62,19 @@ interface SoloAnalysis {
     avg_interval_s?: number;
     rhythm_consistency?: number;
     frequency_rpm?: number;
+    source?: string;
+  };
+  detailed?: {
+    intensity_trend?: string;
+    intensity_change_pct?: number;
+    rest_periods?: number;
+    total_rest_s?: number;
+    work_time_s?: number;
+    work_rest_ratio?: number | null;
+    avg_rest_s?: number;
   };
   summary?: string;
+  narrative?: string;
 }
 
 interface TeamAnalysis {
@@ -93,7 +109,11 @@ interface SportsData {
   sport: string;
   video: { width: number; height: number; fps: number; duration_s: number };
   tracking: {
-    summary: { total_players_detected: number };
+    summary: {
+      total_players_detected: number;
+      raw_tracks_detected?: number;
+      ghost_tracks_filtered?: number;
+    };
     players: Array<{
       id: number;
       team: number;
@@ -110,6 +130,16 @@ interface SportsData {
   tactical?: TeamAnalysis;
   fatigue?: { summary: FatigueSummary };
   sport_specific?: SportSpecificAnalysis | null;
+  scale?: {
+    meters_per_pixel?: number;
+    reference_bbox_height_px?: number;
+    reference_person_m?: number;
+    method?: string;
+    confidence?: string;
+    samples?: number;
+  } | null;
+  sport_metrics?: Record<string, unknown> | null;
+  sport_narrative?: string;
   processing_time_s: number;
 }
 
@@ -394,7 +424,14 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourc
                   </span>
                 )}
                 <span className="text-[10px] text-muted">
-                  {data.tracking.summary.total_players_detected} {isSolo ? "persona" : "jugadores"} · {data.video.duration_s.toFixed(0)}s
+                  {data.tracking.summary.total_players_detected}{" "}
+                  {isSolo
+                    ? data.tracking.summary.total_players_detected === 1 ? "persona" : "personas en cuadro"
+                    : "jugadores"}{" "}
+                  · {data.video.duration_s.toFixed(0)}s
+                  {data.tracking.summary.ghost_tracks_filtered
+                    ? ` · ${data.tracking.summary.ghost_tracks_filtered} falsos positivos descartados`
+                    : ""}
                 </span>
               </div>
             </div>
@@ -406,8 +443,22 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourc
               <Sparkles size={11} /> Síntesis
             </p>
             <p className="text-[13px] leading-5 text-ink">
-              {isSolo ? data.solo?.summary || buildSoloSummary(data) : buildTeamSummary(data)}
+              {(isSolo
+                ? data.solo?.narrative || data.solo?.summary || buildSoloSummary(data)
+                : data.sport_narrative || buildTeamSummary(data))}
             </p>
+            {/* De dónde sale la escala: sin cancha calibrada, de la altura del
+                propio sujeto. Se dice para que nadie lea 24 cm como exacto. */}
+            {isSolo && data.scale?.meters_per_pixel && (
+              <p className="mt-2 flex items-start gap-1.5 text-[10px] leading-4 text-muted">
+                <Info size={11} className="mt-px shrink-0" />
+                <span>
+                  Distancias y amplitudes estimadas a partir de la altura aparente del sujeto
+                  ({(data.scale.reference_person_m ?? 1.7).toFixed(2)} m de referencia)
+                  {data.scale.confidence === "approx" ? "; la toma varía de encuadre, así que son aproximadas" : ""}.
+                </span>
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -416,6 +467,7 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourc
         insights={insights}
         mode={data.mode}
         sport={data.sport}
+        videoId={videoId}
         durationSeconds={data.video.duration_s}
         eventSummary={data.events.event_summary}
         players={data.tracking.players}
@@ -583,6 +635,16 @@ function SoloMetrics({ solo }: { solo: SoloAnalysis }) {
             sub={`${repetitions.frequency_rpm?.toFixed(0) ?? "—"} RPM`}
           />
         )}
+        {/* Altura/amplitud del movimiento: la métrica que de verdad importa en
+            un ejercicio repetitivo (cuánto saltás, no cuánto caminás). */}
+        {rhythm?.oscillation_amplitude_m != null && (
+          <MetricCard
+            icon={<TrendingUp size={13} />}
+            label="Amplitud"
+            value={`${(rhythm.oscillation_amplitude_m * 100).toFixed(0)} cm`}
+            sub="recorrido vertical"
+          />
+        )}
         <MetricCard
           icon={<Footprints size={13} />}
           label="Distancia"
@@ -593,7 +655,39 @@ function SoloMetrics({ solo }: { solo: SoloAnalysis }) {
           label="Duración"
           value={solo.duration_s !== undefined ? formatDuration(solo.duration_s) : "—"}
         />
+        {solo.detailed?.rest_periods != null && solo.detailed.rest_periods > 0 && (
+          <MetricCard
+            icon={<PauseCircle size={13} />}
+            label="Descansos"
+            value={`${solo.detailed.rest_periods}`}
+            sub={`${solo.detailed.avg_rest_s?.toFixed(1) ?? "—"}s promedio`}
+          />
+        )}
       </div>
+
+      {/* Tendencia de intensidad: ¿sostiene el ritmo o se apaga? */}
+      {solo.detailed?.intensity_trend && (
+        <div className="border border-hairline bg-surface p-4">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
+            <TrendingUp size={12} /> Tendencia durante el video
+          </span>
+          <p className="mt-1 text-sm text-ink">
+            {trendLabel(solo.detailed.intensity_trend)}
+            {solo.detailed.intensity_change_pct != null && (
+              <span className="ml-1.5 text-muted">
+                ({solo.detailed.intensity_change_pct > 0 ? "+" : ""}
+                {solo.detailed.intensity_change_pct.toFixed(0)}% inicio vs. final)
+              </span>
+            )}
+          </p>
+          {solo.detailed.work_rest_ratio != null && (
+            <p className="mt-1 text-xs text-muted">
+              Trabajo {solo.detailed.work_time_s?.toFixed(0) ?? "—"}s · descanso{" "}
+              {solo.detailed.total_rest_s?.toFixed(0) ?? "—"}s
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Intensity Bar */}
       {intensity && (
@@ -896,11 +990,18 @@ function ToolTabButton({
 
 function computeSoloScore(solo?: SoloAnalysis): number {
   if (!solo) return 50;
+  // El puntaje premia lo que se puede verificar: que haya ritmo medible, que
+  // sea constante, que el sujeto sostenga el esfuerzo. No premia "moverse
+  // mucho", porque saltar la cuerda en el lugar es poco desplazamiento y mucho
+  // trabajo.
   let score = 30;
-  if (solo.intensity?.score) score += solo.intensity.score * 0.3;
-  if (solo.rhythm?.rhythm_detected) score += 15;
-  if (solo.rhythm?.consistency) score += solo.rhythm.consistency * 10;
-  if (solo.repetitions?.repetitions_detected) score += Math.min(15, solo.repetitions.count * 0.3);
+  if (solo.intensity?.score) score += solo.intensity.score * 0.25;
+  if (solo.rhythm?.rhythm_detected) score += 12;
+  if (solo.rhythm?.consistency) score += solo.rhythm.consistency * 12;
+  if (solo.repetitions?.repetitions_detected) score += Math.min(14, solo.repetitions.count * 0.35);
+  const trend = solo.detailed?.intensity_trend;
+  if (trend === "estable") score += 8;
+  else if (trend === "descendente") score -= 4;
   return Math.min(98, Math.max(20, Math.round(score)));
 }
 
@@ -921,6 +1022,9 @@ function computeTeamScore(data: SportsData): number {
 function buildSoloSummary(data: SportsData): string {
   const s = data.solo;
   if (!s) return "Actividad detectada.";
+  // El pipeline arma una narrativa con las métricas que sí pudo medir; si no
+  // está, se compone una desde los datos disponibles.
+  if (s.narrative) return s.narrative;
   const parts: string[] = [];
   if (s.intensity?.level) parts.push(`Intensidad ${intensityLabel(s.intensity.level).toLowerCase()}`);
   if (s.rhythm?.rhythm_detected) parts.push(`ritmo de ${s.rhythm.frequency_rpm?.toFixed(0)} RPM`);
@@ -942,6 +1046,12 @@ function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function trendLabel(trend: string): string {
+  if (trend === "descendente") return "La intensidad cae hacia el final";
+  if (trend === "ascendente") return "La intensidad sube hacia el final";
+  return "Ritmo sostenido y estable";
 }
 
 function intensityColor(level: string): string {

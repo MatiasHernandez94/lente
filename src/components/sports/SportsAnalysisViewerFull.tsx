@@ -104,7 +104,9 @@ export function SportsAnalysisViewerFull({ videoId, videoUrl, sport }: Props) {
 
   const fetchAnalysis = useCallback(async () => {
     try {
-      const res = await fetch(`/api/videos/${videoId}/sports`);
+      // El overlay dibuja sobre el video, así que necesita los frames por
+      // muestra; el resto de la UI usa la misma respuesta sin pedirlos.
+      const res = await fetch(`/api/videos/${videoId}/sports?include=frames`);
       if (!res.ok) throw new Error("Error");
       const data = await res.json();
       setStatus(data.status);
