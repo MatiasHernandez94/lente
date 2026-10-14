@@ -34,6 +34,10 @@ MAX_INFER_WIDTH = 1280  # Downscale to this width before YOLO inference
 KMEANS_INTERVAL = 10  # Run KMeans every N frames (reuses previous assignment otherwise)
 MAX_TRACK_MISSES = 15  # samples consecutivos sin match antes de pasar a re-ID (~3s a 5fps)
 MAX_PLAUSIBLE_MPS = 12.0  # techo de velocidad humana: sobre esto es salto de identidad, no se suma distancia
+STATIC_SPAN_PX = 20.0  # un track cuyo centro se mueve menos que esto es un artefacto
+# Alturamedia de una persona adulta, usada como referencia de escala cuando no
+# hay calibración de cancha: el bbox del propio sujeto da metros por pixel.
+REFERENCE_PERSON_M = 1.70
 
 
 def load_model():
@@ -138,6 +142,40 @@ def iou(box1, box2):
     return inter / union if union > 0 else 0
 
 
+# Distancia máxima (en múltiplos del lado mayor del bbox) a la que dos
+# detecciones se consideran el mismo sujeto aunque el solapamiento sea bajo.
+PROXIMITY_RANGE = 1.6
+# Ratio mínimo de similitud de tamaño para aceptar match por proximidad: evita
+# confundir una persona cercana y grande con otra lejana y chica.
+PROXIMITY_MIN_SIZE_RATIO = 0.55
+
+
+def proximity_score(det_bbox, track_bbox):
+    """
+    Score de proximidad (0-1) entre una detección y un track.
+
+    IoU puro falla con movimiento rápido: en saltar la cuerda, dribbles o
+    sprints el centro se desplaza más que el propio bbox y el solapamiento cae
+    por debajo del umbral, partiendo al sujeto en un ID nuevo por frame. Este
+    score mantiene la identidad mientras el tamaño del bbox sea comparable y el
+    centro no se aleje más de PROXIMITY_RANGE veces el lado mayor del track.
+    """
+    dc = _center(det_bbox)
+    tc = _center(track_bbox)
+    cdist = math.hypot(dc[0] - tc[0], dc[1] - tc[1])
+
+    track_size = max(track_bbox[2] - track_bbox[0], track_bbox[3] - track_bbox[1])
+    det_size = max(det_bbox[2] - det_bbox[0], det_bbox[3] - det_bbox[1])
+    if track_size <= 0 or det_size <= 0:
+        return 0.0
+
+    size_ratio = min(det_size, track_size) / max(det_size, track_size)
+    if size_ratio < PROXIMITY_MIN_SIZE_RATIO:
+        return 0.0
+
+    return max(0.0, 1.0 - cdist / (PROXIMITY_RANGE * track_size))
+
+
 # El tracker conserva tracks no vistos por un margen (un jugador puede dejar de
 # detectarse 1-2 frames por oclusión/parpadeo). Sin buffer, cada frame perdido
 # creaba un ID nuevo (~2 IDs por frame) y las distancias/velocidades quedaban
@@ -156,6 +194,45 @@ REID_CENTER_WEIGHT = 0.05  # penalización por distancia al último centro (px)
 def _center(bbox):
     x1, y1, x2, y2 = bbox
     return ((x1 + x2) / 2, (y1 + y2) / 2)
+
+
+def _mean_area(player):
+    areas = player.get("bbox_areas") or []
+    return sum(areas) / len(areas) if areas else 0.0
+
+
+def _is_artifact_track(player):
+    """
+    Detecta falsos positivos de YOLO que pasaron el filtro de forma: pósters,
+    carteles, reflejos en espejos o maniquíes.
+
+    Una persona real se mueve. Un cartel tiene el centro clavado en el mismo
+    pixel y el bbox con tamaño casi idéntico frame a frame. En un gimnasio con
+    espejos y gráficos en la pared esto aparecía como "una persona más" con un
+    bbox grande, y encima ganaba la elección de protagonista.
+    """
+    positions = player.get("positions", [])
+    if len(positions) < 4:
+        # Muy pocas muestras: no se puede afirmar que sea estático, se deja
+        # vivir (el filtro por vida útil ya se encarga del ruido de 1-2 frames).
+        return False
+
+    xs = [p[0] for p in positions]
+    ys = [p[1] for p in positions]
+    span = math.hypot(max(xs) - min(xs), max(ys) - min(ys))
+    if span > STATIC_SPAN_PX:
+        return False
+
+    # Centro quieto: solo es artefacto si además el tamaño no varía.
+    areas = player.get("bbox_areas") or []
+    if len(areas) < 4:
+        return False
+    mean_area = sum(areas) / len(areas)
+    if mean_area <= 0:
+        return False
+    variance = sum((a - mean_area) ** 2 for a in areas) / len(areas)
+    cv = math.sqrt(variance) / mean_area
+    return cv < 0.15
 
 
 def _euclid(a, b):
@@ -196,6 +273,7 @@ def simple_tracker(detections, prev_tracks, sample_index, iou_threshold=0.3, max
                 "history_idx": [sample_index],
                 "misses": 0,
                 "jersey_bgr": avg_c,
+                "hits": 1,
             }
             next_id += 1
         return new_tracks, dead
@@ -221,7 +299,7 @@ def simple_tracker(detections, prev_tracks, sample_index, iou_threshold=0.3, max
                 }
         return out, dead
 
-    # IoU matching for alive
+    # ── Pass 1: IoU matching for alive ──
     cost = np.zeros((len(detections), len(track_ids)))
     for di, det in enumerate(detections):
         for ti, tid in enumerate(track_ids):
@@ -248,11 +326,50 @@ def simple_tracker(detections, prev_tracks, sample_index, iou_threshold=0.3, max
             "history_idx": old["history_idx"] + [sample_index],
             "misses": 0,
             "jersey_bgr": avg_c,
+            "hits": old.get("hits", 0) + 1,
         }
         matched_det.add(di)
-        matched_track.add(tid)
+        matched_track.add(ti)
         cost[di, :] = -1
         cost[:, ti] = -1
+
+    # ── Pass 2: proximity fallback para detecciones que nadie capturó por IoU ──
+    # Sin esto, un sujeto moviéndose rápido pierde solapamiento y se abre un ID
+    # nuevo cada frame (1339 "jugadores" en un video de 1 persona).
+    unmatched = [di for di in range(len(detections)) if di not in matched_det]
+    free_tracks = [ti for ti, tid in enumerate(track_ids) if tid not in matched_track]
+
+    if unmatched and free_tracks:
+        prox = np.zeros((len(unmatched), len(free_tracks)))
+        for ai, di in enumerate(unmatched):
+            for bi, ti in enumerate(free_tracks):
+                tid = track_ids[ti]
+                prox[ai, bi] = proximity_score(detections[di]["bbox"], prev_tracks[tid]["bbox"])
+
+        while prox.size > 0:
+            max_idx = np.unravel_index(prox.argmax(), prox.shape)
+            if prox[max_idx] < 0.3:
+                break
+            ai, bi = max_idx
+            di, ti = unmatched[ai], free_tracks[bi]
+            tid = track_ids[ti]
+            det = detections[di]
+            old = prev_tracks[tid]
+            c = jersey_by_det.get(di)
+            avg_c = c.mean(axis=0) if c is not None else old.get("jersey_bgr")
+            new_tracks[tid] = {
+                "bbox": det["bbox"],
+                "team": det.get("team", old["team"]),
+                "history": old["history"] + [det["center"]],
+                "history_idx": old["history_idx"] + [sample_index],
+                "misses": 0,
+                "jersey_bgr": avg_c,
+                "hits": old.get("hits", 0) + 1,
+            }
+            matched_det.add(di)
+            matched_track.add(ti)
+            prox[ai, :] = -1
+            prox[:, bi] = -1
 
     # Keep unmatched alive for short gap (or age them to dead)
     for ti, tid in enumerate(track_ids):
@@ -310,6 +427,7 @@ def simple_tracker(detections, prev_tracks, sample_index, iou_threshold=0.3, max
                     "history_idx": hid[-REID_MAX_SAMPLES:],
                     "misses": 0,
                     "jersey_bgr": avg_c if avg_c is not None else oldd.get("jersey_bgr"),
+                    "hits": oldd.get("hits", 0) + 1,
                 }
                 matched_det.add(di)
 
@@ -329,6 +447,7 @@ def simple_tracker(detections, prev_tracks, sample_index, iou_threshold=0.3, max
                 "history_idx": [sample_index],
                 "misses": 0,
                 "jersey_bgr": avg_c,
+                "hits": 1,
             }
             next_id += 1
 
@@ -362,6 +481,51 @@ def is_plausible_person(bbox, frame_width, frame_height):
 def pixel_to_meters(pixels, frame_width, field_width_m=FIELD_WIDTH_M):
     """Convert pixel distance to meters using field width as reference."""
     return pixels * field_width_m / frame_width
+
+
+def compute_person_scale(frames_data, primary_id=None, players=None):
+    """
+    Escala metros/pixel basada en la altura del propio sujeto.
+
+    No todas las tomas son una cancha de fútbol de 105x68 m. Un video de
+    gimnasio en vertical (576x1024) no tiene nada que ver con esa referencia, y
+    usarla inventa velocidades de 11 m/s para alguien saltando la cuerda.
+
+    En su lugar se toma la altura mediana del bbox del protagonista y se asume
+    que esa altura corresponde a una persona (~1.70 m). Devuelve la escala y la
+    calidad de la estimación para que la UI pueda marcarla como aproximada.
+    """
+    # Prioridad: el protagonista. Si no se pasa, el track más persistente.
+    target_id = primary_id
+    if target_id is None and players:
+        target_id = max(players.values(), key=lambda p: p["frames_seen"])["id"]
+
+    heights = []
+    for fd in frames_data:
+        for p in fd.get("players", []):
+            if target_id is not None and p["id"] != target_id:
+                continue
+            h = p["bbox"][3] - p["bbox"][1]
+            if h > 0:
+                heights.append(h)
+
+    if len(heights) < 3:
+        return None
+
+    median_h = float(np.median(heights))
+    if median_h <= 0:
+        return None
+
+    return {
+        "meters_per_pixel": REFERENCE_PERSON_M / median_h,
+        "reference_bbox_height_px": round(median_h, 1),
+        "reference_person_m": REFERENCE_PERSON_M,
+        "method": "person_height",
+        "samples": len(heights),
+        # La mediana es estable, pero una toma con el sujeto entrar y salir de
+        # cuadro cambia el tamaño aparente: se marca como aproximada.
+        "confidence": "approx" if (max(heights) - min(heights)) / median_h > 0.35 else "good",
+    }
 
 
 def calculate_metrics(tracks, frame_width, frame_interval_s):
@@ -608,7 +772,7 @@ def process_video(video_path, output_path=None, sample_fps=SAMPLE_FPS, progress_
     write_progress(progress_path, "Analizando con YOLOv8", sampled_total, sampled_total, DETECTION_PCT_CAP)
 
     # Build summary (métricas agregadas desde players_metrics: el valor final de
-# cada track, con su velocidad máxima REAL; las posiciones se acumulan por frame).
+    # cada track, con su velocidad máxima REAL; las posiciones se acumulan por frame).
     all_players = {}
     for fd in all_frames_data:
         for p in fd["players"]:
@@ -621,14 +785,58 @@ def process_video(video_path, output_path=None, sample_fps=SAMPLE_FPS, progress_
                     "total_distance_m": 0,
                     "avg_speed_mps": 0,
                     "max_speed_mps": 0,
+                    "frames_seen": 0,
+                    "bbox_areas": [],
                 }
             all_players[pid]["positions"].append(p["center"])
+            all_players[pid]["frames_seen"] += 1
+            all_players[pid]["bbox_areas"].append(
+                max(0.0, p["bbox"][2] - p["bbox"][0]) * max(0.0, p["bbox"][3] - p["bbox"][1])
+            )
 
     for pid, m in players_metrics.items():
         if pid in all_players:
             all_players[pid]["total_distance_m"] = m["distance_m"]
             all_players[pid]["avg_speed_mps"] = m["speed_mps"]
             all_players[pid]["max_speed_mps"] = m["max_speed_mps"]
+
+    # ── Filtro de tracks fantasma ──
+    # Un sujeto real está en escena un rango sostenido. Un track que aparece
+    # solo 1-3 samples es ruido (reflejo, público al fondo, falsos positivos de
+    # YOLO). Sin este filtro el resumen reportaba 1339 "jugadores" en un video
+    # con una sola persona.
+    sampled_total_eff = max(1, len(all_frames_data))
+    min_track_frames = max(4, int(sampled_total_eff * 0.03))
+    min_track_seconds = 0.6
+
+    def is_real_person(p):
+        if p["frames_seen"] < min_track_frames:
+            return False
+        coverage = len(p["positions"]) / sampled_total_eff
+        sustained = coverage >= 0.03 or p["frames_seen"] >= min_track_seconds * sample_fps
+        if not sustained:
+            return False
+        # Un track quieto y de tamaño fijo no es una persona.
+        return not _is_artifact_track(p)
+
+    real_players = {pid: p for pid, p in all_players.items() if is_real_person(p)}
+    # Mantener siempre al sujeto con más presencia: si el video es corto o la
+    # detección es débil, al menos el protagonista no se pierde.
+    if not real_players and all_players:
+        best = max(all_players.values(), key=lambda p: p["frames_seen"])
+        real_players = {best["id"]: best}
+
+    ghost_tracks = len(all_players) - len(real_players)
+
+    # Sujeto protagonista (mayor presencia y movimiento): define el modo
+    # individual. Se ponderan presencia y área media para que alguien parado al
+    # fondo no le gane al sujeto que está ejercitándose.
+    primary_id = None
+    if real_players:
+        primary_id = max(
+            real_players.values(),
+            key=lambda p: p["frames_seen"] * (1.0 + _mean_area(p) / 100000.0),
+        )["id"]
 
     output = {
         "video": {
@@ -643,15 +851,24 @@ def process_video(video_path, output_path=None, sample_fps=SAMPLE_FPS, progress_
             "frame_step": frame_step,
             "confidence": CONFIDENCE_THRESHOLD,
         },
+        # Escala metros/pixel. Sin calibración de cancha, la referencia es el
+        # propio sujeto: su bbox mide lo que mide una persona, así que
+        # m/pixel = 1.70 / altura_mediana_del_bbox. Con esto la altura de un
+        # salto o el desplazamiento se pueden expresar en metros reales en vez
+        # de píxeles sin sentido.
+        "scale": compute_person_scale(all_frames_data, primary_id, all_players),
         "summary": {
-            "total_players_detected": len(all_players),
+            "total_players_detected": len(real_players),
+            "raw_tracks_detected": len(all_players),
+            "ghost_tracks_filtered": ghost_tracks,
+            "primary_player_id": primary_id,
             "frames_processed": len(all_frames_data),
             "teams": {
-                "team_0": len([p for p in all_players.values() if p["team"] == 0]),
-                "team_1": len([p for p in all_players.values() if p["team"] == 1]),
+                "team_0": len([p for p in real_players.values() if p["team"] == 0]),
+                "team_1": len([p for p in real_players.values() if p["team"] == 1]),
             },
         },
-        "players": list(all_players.values()),
+        "players": list(real_players.values()),
         "frames": all_frames_data,
     }
 
@@ -663,7 +880,7 @@ def process_video(video_path, output_path=None, sample_fps=SAMPLE_FPS, progress_
         json.dump(output, f, separators=(',', ':'))
 
     print(f"\nResults saved to {output_path}")
-    print(f"Players detected: {len(all_players)}")
+    print(f"Real players detected: {len(real_players)} (filtered {ghost_tracks} ghost tracks)")
     print(f"Teams: {output['summary']['teams']}")
     print(f"Frames processed: {len(all_frames_data)}")
 

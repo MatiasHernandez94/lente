@@ -11,7 +11,7 @@ import math
 import numpy as np
 
 
-def analyze_movement_rhythm(positions, timestamps):
+def analyze_movement_rhythm(positions, timestamps, scale=None):
     """
     Detect rhythmic movement patterns (jumping, running in place, etc.)
     by analyzing vertical position oscillation frequency.
@@ -32,7 +32,7 @@ def analyze_movement_rhythm(positions, timestamps):
         ys_detrended = np.array(ys)
 
     # Find zero crossings as oscillation peaks
-    mean_y = np.mean(ys_detrended)
+    mean_y = float(np.mean(ys_detrended))
     crossings = []
     for i in range(1, len(ys_detrended)):
         if (ys_detrended[i - 1] - mean_y) * (ys_detrended[i] - mean_y) < 0:
@@ -56,31 +56,43 @@ def analyze_movement_rhythm(positions, timestamps):
     if not period_times:
         return {"rhythm_detected": False, "reason": "cannot_compute_period"}
 
-    avg_period = np.mean(period_times)
-    frequency_hz = 1.0 / avg_period if avg_period > 0 else 0
+    # Los cruces por cero son MEDIOS ciclos: un salto completo es subir y bajar,
+    # o sea dos cruces. Reportar la frecuencia de los cruces duplicaría el ritmo
+    # real (278 "RPM" para alguien que salta 139 veces por minuto).
+    avg_half_period = float(np.mean(period_times))
+    full_period = avg_half_period * 2.0
+    frequency_hz = 1.0 / full_period if full_period > 0 else 0
     frequency_rpm = frequency_hz * 60
 
     # Consistency: coefficient of variation of periods
-    cv = np.std(period_times) / avg_period if avg_period > 0 else 1.0
-    consistency = max(0, 1.0 - cv)  # 1 = perfectly consistent
+    cv = float(np.std(period_times)) / avg_half_period if avg_half_period > 0 else 1.0
+    consistency = max(0.0, 1.0 - cv)
 
     # Amplitude of oscillation
-    amplitude_px = np.max(ys_detrended) - np.min(ys_detrended)
+    amplitude_px = float(np.max(ys_detrended) - np.min(ys_detrended))
 
-    return {
+    result = {
         "rhythm_detected": True,
         "frequency_hz": round(frequency_hz, 2),
         "frequency_rpm": round(frequency_rpm, 1),
-        "avg_period_s": round(avg_period, 3),
+        "avg_period_s": round(full_period, 3),
+        "half_cycle_period_s": round(avg_half_period, 3),
         "consistency": round(consistency, 3),
         "oscillation_amplitude_px": round(amplitude_px, 1),
         "oscillation_peaks": len(crossings),
     }
+    if scale:
+        result["oscillation_amplitude_m"] = round(amplitude_px * scale, 3)
+    return result
 
 
-def analyze_intensity(positions, timestamps, speeds):
+def analyze_intensity(positions, timestamps, speeds, scale=None):
     """
     Analyze exercise intensity based on movement speed and displacement.
+
+    `speed_mps` viene del pipeline de tracking. Si no hay escala real
+    (metros/pixel) el valor es una aproximación pixel-based y se marca como tal:
+    mejor decir "aproximado" que inventar un número con aire de precisión.
     """
     if not speeds:
         return {"level": "unknown", "score": 0}
@@ -89,11 +101,11 @@ def analyze_intensity(positions, timestamps, speeds):
     if not active_speeds:
         return {"level": "rest", "score": 0}
 
-    avg_speed = np.mean(active_speeds)
-    max_speed = np.max(active_speeds)
+    avg_speed = float(np.mean(active_speeds))
+    max_speed = float(np.max(active_speeds))
     active_ratio = len(active_speeds) / len(speeds) if speeds else 0
 
-    # Speed zones
+    # Zonas de esfuerzo
     very_high = sum(1 for s in active_speeds if s > 3.0) / len(active_speeds)
     high = sum(1 for s in active_speeds if 2.0 < s <= 3.0) / len(active_speeds)
     moderate = sum(1 for s in active_speeds if 1.0 < s <= 2.0) / len(active_speeds)
@@ -115,7 +127,7 @@ def analyze_intensity(positions, timestamps, speeds):
     elif score > 30:
         level = "moderate"
 
-    return {
+    result = {
         "level": level,
         "score": round(score, 1),
         "avg_speed_mps": round(avg_speed, 2),
@@ -128,6 +140,12 @@ def analyze_intensity(positions, timestamps, speeds):
             "low_pct": round(low * 100, 1),
         },
     }
+    if scale:
+        result["scale_meters_per_pixel"] = round(scale, 5)
+        result["speed_basis"] = "person_height_reference"
+    else:
+        result["speed_basis"] = "approximate"
+    return result
 
 
 def analyze_movement_pattern(positions, timestamps):
@@ -186,22 +204,44 @@ def analyze_movement_pattern(positions, timestamps):
     }
 
 
-def detect_repetitions(speeds, timestamps, min_peak_distance_s=0.3):
+def detect_repetitions(speeds, timestamps, scale=None, rhythm=None):
     """
-    Detect repetitive motions (jumps, strokes, etc.) from speed peaks.
+    Detect repetitive motions (jumps, strokes, etc.).
+
+    Si el análisis de ritmo encontró una oscilación vertical clara, cada ciclo
+    completo es una repetición: es más fiable que buscar picos de velocidad,
+    que se pierden cuando el movimiento es simétrico (subir y bajar a la misma
+    velocidad no produce picos).
     """
+    if rhythm and rhythm.get("rhythm_detected"):
+        # Cada dos cruces por cero = un ciclo completo (subida + bajada).
+        cycles = rhythm.get("oscillation_peaks", 0) // 2
+        if cycles >= 2:
+            # `avg_period_s` ya viene en ciclos completos.
+            full_period = rhythm.get("avg_period_s", 0)
+            freq_rpm = round(60.0 / full_period, 1) if full_period > 0 else 0
+            return {
+                "repetitions_detected": True,
+                "count": cycles,
+                "source": "vertical_oscillation",
+                "avg_interval_s": round(full_period, 3),
+                "rhythm_consistency": rhythm.get("consistency", 0),
+                "frequency_hz": rhythm.get("frequency_hz", 0),
+                "frequency_rpm": freq_rpm,
+            }
+
     if len(speeds) < 10:
         return {"repetitions_detected": False, "count": 0}
 
     # Find peaks in speed signal
-    mean_speed = np.mean(speeds)
-    std_speed = np.std(speeds)
+    mean_speed = float(np.mean(speeds))
+    std_speed = float(np.std(speeds))
     threshold = mean_speed + 0.5 * std_speed
 
     peaks = []
     for i in range(1, len(speeds) - 1):
         if speeds[i] > threshold and speeds[i] > speeds[i - 1] and speeds[i] > speeds[i + 1]:
-            if not peaks or (timestamps[i] - timestamps[peaks[-1]]) >= min_peak_distance_s:
+            if not peaks or (timestamps[i] - timestamps[peaks[-1]]) >= 0.3:
                 peaks.append(i)
 
     if len(peaks) < 3:
@@ -210,12 +250,13 @@ def detect_repetitions(speeds, timestamps, min_peak_distance_s=0.3):
     # Rhythm consistency between peaks
     peak_times = [timestamps[p] for p in peaks]
     intervals = np.diff(peak_times)
-    avg_interval = np.mean(intervals)
-    cv_interval = np.std(intervals) / avg_interval if avg_interval > 0 else 1.0
+    avg_interval = float(np.mean(intervals))
+    cv_interval = float(np.std(intervals)) / avg_interval if avg_interval > 0 else 1.0
 
     return {
         "repetitions_detected": True,
         "count": len(peaks),
+        "source": "speed_peaks",
         "avg_interval_s": round(avg_interval, 3),
         "rhythm_consistency": round(max(0, 1 - cv_interval), 3),
         "frequency_hz": round(1.0 / avg_interval, 2) if avg_interval > 0 else 0,
@@ -233,13 +274,22 @@ def run_solo_analysis(tracking_data):
     all_timestamps = []
     all_speeds = []
 
+    player_frames = {}
     for fd in frames:
         for p in fd["players"]:
-            all_positions.append(p["center"])
-            all_timestamps.append(fd["time_s"])
-            all_speeds.append(p.get("speed_mps", 0))
+            pid = p["id"]
+            if pid not in player_frames:
+                player_frames[pid] = {
+                    "positions": [], "timestamps": [], "speeds": [], "bbox_area_sum": 0.0,
+                }
+            player_frames[pid]["positions"].append(p["center"])
+            player_frames[pid]["timestamps"].append(fd["time_s"])
+            player_frames[pid]["speeds"].append(p.get("speed_mps", 0))
+            bbox = p.get("bbox")
+            if bbox and len(bbox) == 4:
+                player_frames[pid]["bbox_area_sum"] += max(0.0, (bbox[2] - bbox[0])) * max(0.0, (bbox[3] - bbox[1]))
 
-    if not all_positions:
+    if not player_frames:
         return {
             "activity_detected": False,
             "reason": "no_person_detected",
@@ -249,26 +299,49 @@ def run_solo_analysis(tracking_data):
             "repetitions": {"repetitions_detected": False, "count": 0},
         }
 
-    # If multiple people, analyze the most prominent one (most frames)
-    player_frames = {}
-    for fd in frames:
-        for p in fd["players"]:
-            pid = p["id"]
-            if pid not in player_frames:
-                player_frames[pid] = {"positions": [], "timestamps": [], "speeds": []}
-            player_frames[pid]["positions"].append(p["center"])
-            player_frames[pid]["timestamps"].append(fd["time_s"])
-            player_frames[pid]["speeds"].append(p.get("speed_mps", 0))
-
-    # Pick player with most observations
-    primary_pid = max(player_frames, key=lambda k: len(player_frames[k]["positions"]))
+    # El protagonista ya fue elegido por el tracking (presencia + área, tras
+    # filtrar artefactos). Recalcularlo acá -con datos crudos que todavía
+    # incluyen pósters y reflejos- volvía a elegir al falso positivo más grande.
+    primary_pid = len(player_frames) > 1 and tracking_data.get("summary", {}).get("primary_player_id")
+    if primary_pid is None or primary_pid is False or primary_pid not in player_frames:
+        # Fallback: el más prominente por área media de bbox.
+        if len(player_frames) > 1:
+            primary_pid = max(
+                player_frames,
+                key=lambda k: player_frames[k]["bbox_area_sum"] / max(1, len(player_frames[k]["positions"])),
+            )
+        else:
+            primary_pid = next(iter(player_frames))
     primary = player_frames[primary_pid]
 
+    # Escala real (metros/pixel) derivada de la altura del propio sujeto. Sin
+    # ella, distancia y velocidad salen en píxeles de video y no significan nada.
+    scale = (tracking_data.get("scale") or {}).get("meters_per_pixel")
+
+    # Las velocidades que vienen del tracking están calibradas contra una cancha
+    # de fútbol (ancho del frame = 68 m). En un video vertical de gimnasio eso
+    # inventa 8 m/s para alguien saltando la cuerda. Si tenemos escala real, se
+    # recalculan desde las posiciones; si no, se marcan como aproximadas.
+    if scale:
+        positions_px = primary["positions"]
+        timestamps_s = primary["timestamps"]
+        speeds_calc = []
+        for i in range(1, len(positions_px)):
+            dt = timestamps_s[i] - timestamps_s[i - 1]
+            if dt <= 0:
+                continue
+            dx = positions_px[i][0] - positions_px[i - 1][0]
+            dy = positions_px[i][1] - positions_px[i - 1][1]
+            speeds_calc.append(math.hypot(dx, dy) * scale / dt)
+        if len(speeds_calc) >= 3:
+            primary = dict(primary)
+            primary["speeds"] = speeds_calc
+
     # Run analyses
-    rhythm = analyze_movement_rhythm(primary["positions"], primary["timestamps"])
-    intensity = analyze_intensity(primary["positions"], primary["timestamps"], primary["speeds"])
+    rhythm = analyze_movement_rhythm(primary["positions"], primary["timestamps"], scale)
+    intensity = analyze_intensity(primary["positions"], primary["timestamps"], primary["speeds"], scale)
     movement = analyze_movement_pattern(primary["positions"], primary["timestamps"])
-    repetitions = detect_repetitions(primary["speeds"], primary["timestamps"])
+    repetitions = detect_repetitions(primary["speeds"], primary["timestamps"], scale, rhythm)
 
     # Summary
     total_distance = sum(
@@ -283,7 +356,11 @@ def run_solo_analysis(tracking_data):
     output = {
         "activity_detected": True,
         "primary_person_id": primary_pid,
-        "total_persons": len(player_frames),
+        # Personas reales tras filtrar artefactos, no tracks brutos: en un
+        # gimnasio con espejos la cuenta cruda incluía pósters como "gente".
+        "total_persons": tracking_data.get("summary", {}).get(
+            "total_players_detected", len(player_frames)
+        ),
         "duration_s": round(duration, 1),
         "total_distance_m": round(total_distance, 2),
         "rhythm": rhythm,
