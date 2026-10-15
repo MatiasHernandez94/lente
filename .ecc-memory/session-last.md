@@ -33,14 +33,36 @@ aprendizajes curados sembrados (5).
    mosaico y la serialización compacta están verificadas a nivel de datos y payload, pero ninguna se
    ejecutó contra el modelo. Lo que hay que mirar: que el modelo lea bien el mosaico (no lo interprete
    como una escena con gente duplicada) y que respete el JSON con el veredicto.
-2. **Tests para el código nuevo.** Los 66 tests pasan pero ninguno cubre `src/lib/analysis/audit.ts`
-   ni `src/lib/coach/learnings.ts`. Casos mínimos: rango `bajo/normal/no_medible`, referencia
-   escalada a la duración, `clampConfidence`, y el aislamiento por usuario en `getRelevantLearnings`.
-3. **`FEW_SHOT_MEMORIA_DINAMICA` completo.** La base existe (recuperar + inyectar + feedback). Lo que
+2. **`FEW_SHOT_MEMORIA_DINAMICA` completo.** La base existe (recuperar + inyectar + feedback). Lo que
    falta es recuperar **después** de clasificar el error, para priorizar aprendizajes del tipo de falla
    detectado en vez de solo los universales.
+3. **`clampConfidence` no tiene test unitario.** Sigue privada en `gemini.ts`. El techo de confianza
+   es una garantía importante y hoy solo se ejerce contra el modelo real.
 4. **Deuda de lint preexistente**: 10 errores en `src/lib/execution/geom.test.ts` (uso de `any`).
    Ajenos a este trabajo, pero rompen `npm run lint`.
+
+## Cerrado en esta sesión (TDD)
+
+Pendiente #2 de la sesión anterior (tests para `audit.ts` y `learnings.ts`): **hecho**.
+Evidencia completa en `docs/testing/audit-learnings.tdd.md`.
+
+- 31 tests nuevos. Suite: 66 → **96 tests**, todos en verde.
+- Runner: `node:test` nativo. El glob de `npm test` estaba fijado a `src/lib/execution/`, así que
+  los tests en rutas nuevas **no corrían** (reportaba 66 con los archivos en disco). Ahora usa
+  `"src/**/*.test.ts"`.
+- 4 bugs reales encontrados por los tests, no por lectura:
+  1. `toNumber` colapsaba `"estable (-6%)"` a `-6`, borrando la etiqueta cualitativa.
+  2. Los buckets de `coverage` no sumaban `audited` (faltaba `sin_referencia`).
+  3. `rankLearnings`: el filtro `rating >= 0` era un no-op, dejaba pasar los aprendizajes que el
+     usuario marcó como "no sirvió".
+  4. `rankLearnings`: el orden de universales estaba invertido, salían últimos.
+- La lógica pura se extrajo a `src/lib/coach/learnings-core.ts` (sin imports en runtime) porque
+  `learnings.ts` era **intesteable**: importa `@/lib/db`, que `node:test` no resuelve, más
+  `server-only` (lanza al importar) y `getClient()` exigiendo credenciales de Supabase.
+- Cobertura: `audit.ts` 80.15% ramas / 99.33% líneas; `learnings-core.ts` 92.86% / 100%.
+
+**Lección de proceso:** el glob de tests fijado a un directorario es una trampa silenciosa. Un test
+que no corre en la suite da la misma señal (verde) que no tenerlo.
 
 ## Para retomar
 
