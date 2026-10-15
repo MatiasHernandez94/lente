@@ -80,7 +80,7 @@ test("un aprendizaje con rating negativo se descarta", () => {
 test("con tipo de falla conocido manda la coincidencia primero", () => {
   const visible = rankLearnings(
     [
-      learning({ id: "universal", aprendizaje: "sin tipo", errorType: null }),
+      learning({ id: "universal", learning: "sin tipo", errorType: null }),
       learning({ id: "especifico", errorType: "postural", learning: "sobre postura" }),
       learning({ id: "otro-tipo", errorType: "timing", learning: "sobre timing" }),
     ],

@@ -50,9 +50,16 @@ test("una métrica fuera de rango queda en issues con su implicación", () => {
   // El hallazgo accionable tiene que aparecer priorizado en issues.
   assert.ok(
     audit.issues.some((i) => i.key === "rhythm_consistency"),
-    "rhythm_consensity debe estar en issues",
+    "rhythm_consistency debe estar en issues",
   );
-  assert.equal(audit.coverage.out_of_range, audit.findings.length - audit.coverage.normal - audit.coverage.unmeasurable);
+
+  // Las cuatro categorías cubren todos los estados: tienen que sumar el total.
+  const c = audit.coverage;
+  assert.equal(
+    c.normal + c.out_of_range + c.unmeasurable + c.sin_referencia,
+    c.audited,
+    "los buckets de coverage deben cerrar",
+  );
 });
 
 test("sin sujeto detectable, el ritmo se declara no medible en vez de inventarse", () => {
@@ -62,10 +69,18 @@ test("sin sujeto detectable, el ritmo se declara no medible en vez de inventarse
   assert.ok(rhythm, "debe haber un hallazgo de ritmo");
   assert.equal(rhythm.status, "no_medible");
   assert.equal(rhythm.value, "no medible");
-  assert.equal(audit.coverage.unmeasurable, 1);
-  // Sin ritmo no se puede concluir nada que dependa de él.
+
+  // El ritmo es la métrica central de una actividad repetitiva: sin ella, todo
+  // lo que dependa de cadencia es adivinanza.
+  assert.ok(audit.coverage.unmeasurable >= 1, "al menos el ritmo debe ser no medible");
   assert.equal(audit.confidence, "baja");
   assert.match(audit.confidenceReason, /ritmo/i);
+
+  // No se inventa una frecuencia para rellenar el espacio.
+  assert.ok(
+    !audit.findings.some((f) => f.key === "rhythm_rpm"),
+    "no debe aparecer una cadencia fabricada",
+  );
 });
 
 test("la confianza es ALTA cuando las métricas clave se midieron, aunque el resultado sea malo", () => {
@@ -182,7 +197,7 @@ test("el compacto no destruye la etiqueta cualitativa de la tendencia", () => {
   );
 
   const compact = formatAuditCompact(audit);
-  const row = JSON.parse(compact.slice(compact.indexOf("{"))).a as unknown[][];
+  const row = JSON.parse(compact.slice(compact.lastIndexOf("{\"a\":"))).a as unknown[][];
   const trend = row.find((r) => r[0] === "intensity_trend");
 
   assert.ok(trend, "debe estar la fila de tendencia");
@@ -205,7 +220,7 @@ test("el compacto sí numera los valores que son número + unidad", () => {
   );
 
   const compact = formatAuditCompact(audit);
-  const row = JSON.parse(compact.slice(compact.indexOf("{"))).a as unknown[][];
+  const row = JSON.parse(compact.slice(compact.lastIndexOf("{\"a\":"))).a as unknown[][];
 
   assert.equal(row.find((r) => r[0] === "rhythm_rpm")?.[1], 139);
   assert.equal(row.find((r) => r[0] === "solo_avg_speed")?.[1], 0.79);

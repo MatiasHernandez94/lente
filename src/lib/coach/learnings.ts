@@ -2,6 +2,15 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { getClient } from "@/lib/db";
 import type { Sport } from "@/lib/analysis/types";
+import {
+  buildLearningText,
+  MAX_INJECTED,
+  rankLearnings,
+  type CoachLearning,
+} from "./learnings-core.ts";
+
+export { buildLearningText, formatLearningsForPrompt, rankLearnings, MAX_INJECTED } from "./learnings-core.ts";
+export type { CoachLearning } from "./learnings-core.ts";
 
 /**
  * Memoria de aprendizajes del coach.
@@ -22,24 +31,6 @@ import type { Sport } from "@/lib/analysis/types";
  * que es exactamente la dimensión en la que el aprendizaje aplica. Si algún día
  * el volumen lo justifica, se agrega similitud semántica encima.
  */
-
-export interface CoachLearning {
-  id: string;
-  origen: "curado" | "usuario" | "negativo";
-  userId: string | null;
-  sport: Sport;
-  errorType: string | null;
-  learning: string;
-  videoId: string | null;
-  rating: number | null;
-  uses: number;
-}
-
-/** Cuántos aprendizajes se inyectan como máximo en un prompt. */
-const MAX_INJECTED = 2;
-
-/** Prioridad de origen: lo curado pesa más que lo puntual de un video. */
-const ORIGEN_WEIGHT = { curado: 3, negativo: 2, usuario: 1 } as const;
 
 interface LearningRow {
   id: string;
@@ -95,61 +86,15 @@ export async function getRelevantLearnings(
 
     const rows = (data as LearningRow[]).map(toLearning);
 
-    // Visibles para este usuario: los curados (globales) y los propios.
-    const visible = rows.filter(
-      (l) => l.origen === "curado" || (userId != null && l.userId === userId),
-    );
-
-    // Orden de recuperación.
-    // Si todavía no se conoce el tipo de falla (se recupera antes de clasificar),
-    // un aprendizaje etiquetado con un tipo específico puede no aplicar: se
-    // priorizan los universales y se deja que el modelo descarte el resto.
-    const ranked = visible
-      .filter((l) => l.rating == null || l.rating >= 0)
-      .sort((a, b) => {
-        const typeMatch =
-          Number(b.errorType != null && b.errorType === errorType) -
-          Number(a.errorType != null && a.errorType === errorType);
-        if (typeMatch !== 0) return typeMatch;
-
-        if (errorType == null) {
-          // Sin tipo conocido: los universales primero.
-          const universal =
-            Number(a.errorType == null) - Number(b.errorType == null);
-          if (universal !== 0) return universal;
-        }
-
-        const origen = ORIGEN_WEIGHT[b.origen] - ORIGEN_WEIGHT[a.origen];
-        if (origen !== 0) return origen;
-        const rating = (b.rating ?? 0.5) - (a.rating ?? 0.5);
-        if (rating !== 0) return rating;
-        return a.uses - b.uses;
-      });
-
-    const picked = ranked.slice(0, limit);
+    // Filtrado y orden viven en learnings-core: son decisión pura, y tenerlos
+    // acá (dentro de una función que toca la base) los hacía intesteables.
+    const picked = rankLearnings(rows, errorType, userId, limit);
     if (picked.length > 0) void bumpUses(picked.map((p) => p.id));
     return picked;
   } catch {
     // La memoria es una mejora, no una dependencia: si falla, el análisis sigue.
     return [];
   }
-}
-
-/**
- * Texto de memoria dinámica para inyectar en el prompt.
- *
- * Devuelve string vacío si no hay nada: es preferible no mandar la sección a
- * mandar una sección vacía que el modelo interprete como "hay aprendizajes".
- */
-export function formatLearningsForPrompt(learnings: CoachLearning[]): string {
-  if (learnings.length === 0) return "";
-
-  const lines = learnings.map((l, i) => `${i + 1}. ${l.learning}`);
-
-  return [
-    `AJUSTES APRENDIDOS de análisis anteriores. Aplicá SOLO los que correspondan a este caso; si uno no aplica, ignoralo en silencio:`,
-    ...lines,
-  ].join("\n");
 }
 
 /** Guarda un feedback del usuario sobre una corrección concreta. */
@@ -167,13 +112,9 @@ export async function saveUserFeedback(params: {
 }): Promise<CoachLearning | null> {
   const now = new Date().toISOString();
 
-  // Con feedback negativo se guarda como RESTRICCIÓN, no como ejemplo: "no
-  // hagas X" es más estable de inyectar que "hacé Y".
-  const learning = params.helpful
-    ? `Ajuste validado por el usuario: ${params.recommendation} funcionó para este caso; mantenelo.`
-    : params.correction?.trim()
-      ? `No repitas: ${params.recommendation}. En este caso lo correcto fue: ${params.correction.trim()}.`
-      : `No repitas: ${params.recommendation}. El usuario marcó que no aplicaba.`;
+  // La redacción vive en learnings-core: el negativo se construye como
+  // restricción ("no repitas X"), que es más estable de inyectar que un ejemplo.
+  const learning = buildLearningText(params);
 
   const row = {
     id: randomUUID(),

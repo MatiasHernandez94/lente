@@ -8,7 +8,7 @@
     "start": "next start",
     "worker": "TSX_TSCONFIG_PATH=scripts/worker/tsconfig.json tsx scripts/worker/worker.ts",
     "lint": "eslint",
-    "test": "node --experimental-strip-types --test src/lib/execution/*.test.ts"
+    "test": "node --experimental-strip-types --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@google/genai": "^2.24.0",

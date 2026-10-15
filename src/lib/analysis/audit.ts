@@ -40,8 +40,20 @@ export interface AuditResult {
   findings: AuditFinding[];
   /** Hallazgos accionables (fuera de rango o no medibles), priorizados. */
   issues: AuditFinding[];
-  /** Cuántas métricas se auditaron y con qué resultado. */
-  coverage: { audited: number; normal: number; out_of_range: number; unmeasurable: number };
+  /**
+   * Desglose de las métricas auditadas.
+   *
+   * Las cuatro categorías suman `audited`: `sin_referencia` cuenta aparte para
+   * que las cuentas cierren y se vea cuántas métricas se midieron pero no
+   * tienen contra qué compararse.
+   */
+  coverage: {
+    audited: number;
+    normal: number;
+    out_of_range: number;
+    unmeasurable: number;
+    sin_referencia: number;
+  };
   /**
    * Confianza global del análisis. Si la calidad de datos es baja, el agente
    * tiene que bajar el tono de sus conclusiones en vez de sentenciar.
@@ -227,7 +239,17 @@ export function auditAnalysis(input: {
     normal: findings.filter((f) => f.status === "normal").length,
     out_of_range: findings.filter((f) => f.status === "bajo" || f.status === "alto").length,
     unmeasurable: findings.filter((f) => f.status === "no_medible").length,
+    sin_referencia: findings.filter((f) => f.status === "sin_referencia").length,
   };
+
+  // Las cuatro categorías cubren todos los estados posibles, así que deben
+  // sumar el total. Si no cierran, se agregó un estado nuevo sin contarlo.
+  const sum = coverage.normal + coverage.out_of_range + coverage.unmeasurable + coverage.sin_referencia;
+  if (sum !== coverage.audited) {
+    throw new Error(
+      `coverage inconsistente: ${sum} !== ${coverage.audited} (¿estado de hallazgo sin clasificar?)`,
+    );
+  }
 
   const { confidence, confidenceReason } = rateConfidence(coverage, findings);
 
@@ -561,8 +583,12 @@ export function formatAuditCompact(audit: AuditResult): string {
 }
 
 function toNumber(value: string): number | null {
-  const match = value.match(/-?\d+(?:[.,]\d+)?/);
+  // Solo se numera si el valor EMPIEZA con un número ("139 rep/min", "25 cm").
+  // Si arranca con texto ("estable (-6%)") la etiqueta cualitativa es
+  // información, no decorado: convertirla a -6 borraría la diferencia entre
+  // "ritmo estable" y "ritmo en descenso", que son conclusiones opuestas.
+  const match = value.match(/^\s*(-?\d+(?:[.,]\d+)?)/);
   if (!match) return null;
-  const n = Number(match[0].replace(",", "."));
+  const n = Number(match[1].replace(",", "."));
   return Number.isFinite(n) ? n : null;
 }
