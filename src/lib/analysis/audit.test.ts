@@ -249,3 +249,123 @@ test("el verboso incluye la implicación legible de cada hallazgo", () => {
   assert.match(verbose, /Confianza del análisis/);
   assert.match(verbose, /85/);
 });
+
+// ── 5. Ramas de las que dependen las conclusiones ──
+
+test("ratio trabajo/descanso dentro del rango se marca normal", () => {
+  const audit = auditAnalysis(
+    soloInput({
+      solo: {
+        rhythm: { rhythm_detected: true, consistency: 0.9, frequency_rpm: 130 },
+        intensity: { level: "moderate", score: 45, avg_speed_mps: 1.5 },
+        movement: { pattern: "linear" },
+        detailed: { work_rest_ratio: 3, rest_periods: 4, total_rest_s: 20 },
+      },
+    }),
+  );
+
+  const ratio = audit.findings.find((f) => f.key === "work_rest_ratio");
+  assert.equal(ratio?.status, "normal");
+  assert.match(ratio?.value ?? "", /3\.0:1/);
+});
+
+test("ratio trabajo/descanso bajo se marca fuera de rango", () => {
+  const audit = auditAnalysis(
+    soloInput({
+      solo: {
+        rhythm: { rhythm_detected: true, consistency: 0.9, frequency_rpm: 130 },
+        intensity: { level: "moderate", score: 45, avg_speed_mps: 1.5 },
+        movement: { pattern: "linear" },
+        detailed: { work_rest_ratio: 1, rest_periods: 6 },
+      },
+    }),
+  );
+
+  assert.equal(audit.findings.find((f) => f.key === "work_rest_ratio")?.status, "bajo");
+});
+
+test("pausas sin ratio cuantificable se marcan sin referencia", () => {
+  const audit = auditAnalysis(
+    soloInput({
+      solo: {
+        rhythm: { rhythm_detected: true, consistency: 0.9, frequency_rpm: 130 },
+        intensity: { level: "moderate", score: 45, avg_speed_mps: 1.5 },
+        movement: { pattern: "linear" },
+        detailed: { rest_periods: 3 },
+      },
+    }),
+  );
+
+  const ratio = audit.findings.find((f) => f.key === "work_rest_ratio");
+  assert.equal(ratio?.status, "sin_referencia");
+  assert.match(ratio?.value ?? "", /3 pausas/);
+});
+
+test("velocidad baja en ejercicio estacionario NO es un hallazgo negativo", () => {
+  // Saltar la cuerda tiene desplazamiento horizontal bajo por diseño: marcarlo
+  // como "falta de intensidad" sería el error original que se corrigió.
+  const audit = auditAnalysis(
+    soloInput({
+      solo: {
+        rhythm: { rhythm_detected: true, consistency: 0.9, frequency_rpm: 130 },
+        intensity: { level: "moderate", score: 45, avg_speed_mps: 0.2 },
+        movement: { pattern: "oscillating" },
+      },
+    }),
+  );
+
+  const speed = audit.findings.find((f) => f.key === "solo_avg_speed");
+  assert.equal(speed?.status, "normal");
+  assert.match(speed?.implication ?? "", /oscilatorio/);
+});
+
+test("velocidad alta en ejercicio con desplazamiento se marca alta", () => {
+  const audit = auditAnalysis(
+    soloInput({
+      solo: {
+        rhythm: { rhythm_detected: true, consistency: 0.9, frequency_rpm: 30 },
+        intensity: { level: "high", score: 70, avg_speed_mps: 5 },
+        movement: { pattern: "linear" },
+      },
+    }),
+  );
+
+  assert.equal(audit.findings.find((f) => f.key === "solo_avg_speed")?.status, "alto");
+});
+
+test("cuando muchas métricas secundarias faltan pero el ritmo sí se midió, la confianza baja a media", () => {
+  // El ritmo SÍ se midió: no hay métrica crítica ausente, así que la confianza
+  // no cae a "baja", pero faltan demasiadas otras para sentenciar.
+  const audit = auditAnalysis(
+    soloInput({
+      solo: {
+        rhythm: { rhythm_detected: true, consistency: 0.9, frequency_rpm: 130 },
+        intensity: { level: "unknown", score: 0 },
+        movement: { pattern: "unknown" },
+      },
+    }),
+  );
+
+  assert.ok(audit.coverage.unmeasurable >= 2, "intensidad y velocidad deben ser no medibles");
+  assert.equal(audit.confidence, "media");
+  assert.match(audit.confidenceReason, /parciales/i);
+});
+
+test("equipo con demasiados jugadores fantasma se marca bloque no evaluable", () => {
+  const audit = auditAnalysis({
+    sport: "futbol" as Sport,
+    mode: "team",
+    duration_s: 600,
+    tracking: { summary: { total_players_detected: 2 } },
+    sport_metrics: {
+      player_count: 2,
+      distance_per_player_m: 3000,
+      ball_tracked_pct: 80,
+      sprint_samples_pct: 12,
+    },
+  });
+
+  const players = audit.findings.find((f) => f.key === "team_players");
+  assert.equal(players?.status, "bajo");
+  assert.match(players?.implication ?? "", /sistema táctico/);
+});
