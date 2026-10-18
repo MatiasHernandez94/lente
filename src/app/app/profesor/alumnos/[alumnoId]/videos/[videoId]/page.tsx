@@ -9,6 +9,7 @@ import { PLAYER_LABEL, formatShortDate } from "@/lib/format";
 import { VideoInsights } from "@/components/app/VideoInsights";
 import { CorrectionForm } from "@/components/app/CorrectionForm";
 import { CorreccionesList } from "@/components/app/CorreccionesList";
+import { ConsultaChat } from "@/components/consulta/ConsultaChat";
 
 interface CorreccionVideoPageProps {
   params: Promise<{ alumnoId: string; videoId: string }>;
@@ -74,6 +75,7 @@ export default async function CorreccionVideoPage({ params, searchParams }: Corr
               sourceRef={video.sourceRef}
               sport={video.sport}
               initialSeconds={hasClip ? initialSeconds : undefined}
+              visionEnabled={false}
             />
           ) : (
             <p className="text-sm text-muted">El análisis deportivo requiere un video local.</p>
@@ -87,6 +89,9 @@ export default async function CorreccionVideoPage({ params, searchParams }: Corr
             <div className="mt-4">
               <CorrectionForm videoId={video.id} alumnoId={alumnoId} />
             </div>
+          </section>
+          <section className="border border-hairline bg-surface">
+            <ConsultaChat videoId={video.id} />
           </section>
         </div>
 

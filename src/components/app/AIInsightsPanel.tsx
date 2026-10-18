@@ -10,60 +10,7 @@ import {
   UserCheck,
   Users,
 } from "lucide-react";
-
-async function pollUntilDone<T extends { status?: string; ok?: boolean; error?: string; kind?: string; detail?: string | null }>(
-  request: () => Promise<T>,
-  isDone: (data: T) => boolean,
-  apply: (data: T) => void,
-  timeoutMs: number,
-  intervalMs = 3000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    await sleep(intervalMs);
-    try {
-      const data = await request();
-      if (isDone(data)) {
-        apply(data);
-        return;
-      }
-    } catch {
-      // reintentar
-    }
-  }
-  apply({ status: "none", error: "Tiempo de espera agotado mientras se procesaba.", kind: "timeout" } as T);
-}
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-interface DetectionResult {
-  ok?: boolean;
-  sport?: string;
-  confidence?: number;
-  reason?: string;
-  provider?: string;
-  error?: string;
-  kind?: string;
-  detail?: string | null;
-}
-
-interface Improvement {
-  title: string;
-  detail: string;
-  priority: "alta" | "media" | "baja";
-  referenceToMetric?: string;
-}
-
-interface ImprovementsResult {
-  summary?: string;
-  improvements?: Improvement[];
-  playerCount?: number;
-  provider?: string;
-  cached?: boolean;
-  error?: string;
-  kind?: string;
-  detail?: string | null;
-}
+import type { VisionInsightsState } from "@/lib/hooks/useVisionInsights";
 
 interface AsignacionData {
   userId: string;
@@ -76,13 +23,16 @@ interface AsignacionData {
 interface Props {
   videoId: string;
   playerCount: number;
+  vision: VisionInsightsState;
 }
 
-export function AIInsightsPanel({ videoId, playerCount }: Props) {
-  const [detecting, setDetecting] = useState(false);
-  const [improving, setImproving] = useState(false);
-  const [detection, setDetection] = useState<DetectionResult | null>(null);
-  const [improvements, setImprovements] = useState<ImprovementsResult | null>(null);
+/**
+ * Panel presentacional de la IA de visión. La ejecución (auto-arranque, caché,
+ * reintentos) vive en `useVisionInsights`, que se monta a nivel del visor para
+ * que corra aunque esta pestaña esté cerrada.
+ */
+export function AIInsightsPanel({ videoId, playerCount, vision }: Props) {
+  const { detection, improvements, detecting, improving, detectionError, runDetection, runImprovements } = vision;
 
   const [asignacion, setAsignacion] = useState<AsignacionData | null>(null);
   const [savingAsignacion, setSavingAsignacion] = useState(false);
@@ -91,61 +41,7 @@ export function AIInsightsPanel({ videoId, playerCount }: Props) {
     void fetch(`/api/videos/${videoId}/asignacion`)
       .then((res) => (res.ok ? res.json() : null))
       .then((d) => setAsignacion(d));
-
-    void fetch(`/api/videos/${videoId}/mejoras`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((d) => {
-        if (d && d.status !== "none") setImprovements(d);
-      });
   }, [videoId]);
-
-  const detectSport = async () => {
-    setDetecting(true);
-    setDetection(null);
-    try {
-      const res = await fetch(`/api/videos/${videoId}/detectar-deporte`, { method: "POST" });
-      const data = await res.json();
-      if (data?.status === "queued") {
-        setDetection({ error: "La detección está en cola de procesamiento. Esperando resultado…", kind: "queued" });
-        await pollUntilDone(
-          () => fetch(`/api/videos/${videoId}/detectar-deporte`).then((r) => r.json()),
-          (d) => d?.ok === true || d?.status === "none" || d?.status === "error",
-          (d) => setDetection(d?.ok ? d : { error: d?.error ?? "La detección del deporte falló.", kind: d?.kind ?? "error", detail: d?.detail ?? null }),
-          180_000,
-        );
-        return;
-      }
-      setDetection(data);
-    } catch {
-      setDetection({ error: "Error de red al intentar la detección.", kind: "network" });
-    } finally {
-      setDetecting(false);
-    }
-  };
-
-  const generateImprovements = async () => {
-    setImproving(true);
-    setImprovements(null);
-    try {
-      const res = await fetch(`/api/videos/${videoId}/mejoras`, { method: "POST" });
-      const data = await res.json();
-      if (data?.status === "queued") {
-        setImprovements({ error: "El análisis está en cola de procesamiento. Esperando resultado…", kind: "queued", summary: "" });
-        await pollUntilDone(
-          () => fetch(`/api/videos/${videoId}/mejoras`).then((r) => r.json()),
-          (d) => d?.improvements != null || d?.error != null || d?.status === "none" || d?.status === "error",
-          (d) => setImprovements(d?.improvements != null ? d : { error: d?.error ?? "La generación de mejoras falló.", kind: d?.kind ?? "error", detail: d?.detail ?? null, summary: "" }),
-          180_000,
-        );
-        return;
-      }
-      setImprovements(data);
-    } catch {
-      setImprovements({ error: "Error de red al generar mejoras.", kind: "network", summary: "" });
-    } finally {
-      setImproving(false);
-    }
-  };
 
   const assignTo = async (alumnoId: string | null) => {
     setSavingAsignacion(true);
@@ -171,10 +67,6 @@ export function AIInsightsPanel({ videoId, playerCount }: Props) {
     }
   };
 
-  const error = detection?.kind === "no_keys" || detection?.kind === "quota" || detection?.kind === "video_unavailable" || detection?.kind === "frames_unavailable" || detection?.kind === "network" || detection?.kind === "queued" || detection?.kind === "timeout"
-    ? { kind: detection.kind, message: detection.error ?? "" }
-    : null;
-
   return (
     <div className="space-y-4">
       <div>
@@ -196,12 +88,12 @@ export function AIInsightsPanel({ videoId, playerCount }: Props) {
             </p>
           </div>
           <button
-            onClick={detectSport}
+            onClick={() => void runDetection()}
             disabled={detecting}
             className="inline-flex items-center gap-2 border border-ink/20 px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-ink hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
           >
             {detecting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-            {detecting ? "Detectando…" : "Detectar deporte"}
+            {detecting ? "Detectando…" : detection ? "Volver a detectar" : "Detectar deporte"}
           </button>
         </div>
 
@@ -215,17 +107,19 @@ export function AIInsightsPanel({ videoId, playerCount }: Props) {
           </div>
         )}
 
-        {error && (
+        {detectionError && (
           <div className="mt-3 border border-amber-200 bg-amber-50 p-3 text-amber-800">
             <p className="flex items-start gap-1.5 text-[12px] leading-4">
               <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-              <span>{error.message}</span>
+              <span>{detectionError.message}</span>
             </p>
           </div>
         )}
 
-        {!detection && !error && (
-          <p className="mt-2 text-[11px] text-muted">Requerirá una API key de Gemini configurada en el backend.</p>
+        {!detection && !detectionError && detecting && (
+          <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted">
+            <Loader2 size={11} className="animate-spin" /> Analizando el video automáticamente…
+          </p>
         )}
       </div>
 
@@ -239,12 +133,12 @@ export function AIInsightsPanel({ videoId, playerCount }: Props) {
             </p>
           </div>
           <button
-            onClick={generateImprovements}
+            onClick={() => void runImprovements()}
             disabled={improving}
             className="inline-flex items-center gap-2 border border-ink/20 px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-ink hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
           >
             {improving ? <Loader2 size={12} className="animate-spin" /> : <Brain size={12} />}
-            {improving ? "Analizando…" : improvements ? "Volver a analizar" : "Analizar y proponer mejoras"}
+            {improving ? "Analizando…" : improvements?.improvements ? "Volver a analizar" : "Analizar y proponer mejoras"}
           </button>
         </div>
 
@@ -284,8 +178,10 @@ export function AIInsightsPanel({ videoId, playerCount }: Props) {
           </div>
         )}
 
-        {!improvements && !improving && (
-          <p className="mt-2 text-[11px] text-muted">Genera un informe con el agente para ver recomendaciones.</p>
+        {improving && !improvements?.improvements && (
+          <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted">
+            <Loader2 size={11} className="animate-spin" /> Generando recomendaciones…
+          </p>
         )}
       </div>
 

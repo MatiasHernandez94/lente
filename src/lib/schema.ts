@@ -99,6 +99,22 @@ export interface CorreccionConProfesor extends CorreccionRow {
   profesorName: string;
 }
 
+export interface ConsultaRow {
+  id: string;
+  videoId: string;
+  alumnoId: string;
+  profesorId: string;
+  autorId: string;
+  autorRol: UserRol;
+  mensaje: string;
+  leida: boolean;
+  createdAt: string;
+}
+
+export interface ConsultaConAutor extends ConsultaRow {
+  autorName: string;
+}
+
 export type ProcessingJobKind = "detect-sport" | "improvements" | "sports" | "coach-report";
 export type ProcessingJobStatus = "pending" | "processing" | "done" | "error";
 

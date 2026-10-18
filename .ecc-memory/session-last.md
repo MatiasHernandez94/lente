@@ -66,14 +66,8 @@ que no corre en la suite da la misma señal (verde) que no tenerlo.
 
 ## Para retomar
 
-```bash
-node scripts/run-migrations.mjs                                    # por si hay migración nueva
-TSX_TSCONFIG_PATH=scripts/tools/tsconfig.json \
-  npx tsx scripts/tools/seed-learnings.ts                          # sembrar curados (idempotente)
-npm run dev
-```
+- La tabla `consultas` y las rutas `GET/POST /api/videos/[id]/consulta` + bandeja `/api/profesor/consultas-pendientes` están en verde (106 tests OK, build OK).
+- El QA completo (`scripts/tools/qa-consultas.ts`) pasa 28/28 (incluye notificaciones y limpieza).
+- Pendientes: el coach flotante usa `top-[calc(var(--header-height,4rem)+1.25rem)]`; validar en móvil si el header ocupa 4rem o más.
+- Siguiente revisión: ciclo IA end-to-end con Gemini real, `FEW_SHOT_MEMORIA_DINAMICA` recuperación post-clasificación, test `clampConfidence`, y deuda lint `geom.test.ts`.
 
-El video de prueba usado para todo el desarrollo fue
-`data/uploads/0ec29bf7-84ca-4acc-9c57-af90ef4c2e01.mp4` (gimnasio, 576×1024 portrait, 3 personas en
-cuadro, una saltando la cuerda). Sirve como caso representativo de "actividad individual con gente
-de fondo", que es el que rompía el análisis.

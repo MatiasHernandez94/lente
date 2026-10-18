@@ -6,9 +6,11 @@ import { getVideoById, getAnalysisForVideo } from "@/lib/repo";
 import { getSessionUser } from "@/lib/session";
 import { listCorreccionesByVideo } from "@/lib/correccion/service";
 import { PLAYER_LABEL, formatShortDate } from "@/lib/format";
+import { CoachChatFloat } from "@/components/coach/CoachChatFloat";
 import { VideoInsights } from "@/components/app/VideoInsights";
 import { SaveAnalysisPrompt } from "@/components/app/SaveAnalysisPrompt";
 import { CorreccionesList } from "@/components/app/CorreccionesList";
+import { ConsultaChat } from "@/components/consulta/ConsultaChat";
 
 interface DetailPageProps {
   params: Promise<{ id: string }>;
@@ -95,6 +97,8 @@ export default async function VideoDetailPage({ params, searchParams }: DetailPa
         sport={video.sport}
         initialSeconds={hasClip ? initialSeconds : undefined}
       />
+      <CoachChatFloat videoId={video.id} />
+      <ConsultaChat videoId={video.id} />
 
       <section>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">

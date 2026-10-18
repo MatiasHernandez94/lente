@@ -11,9 +11,11 @@ interface Message {
 
 interface Props {
   videoId: string;
+  /** Alto y layout del contenedor. Por defecto ocupa 400px embebido. */
+  className?: string;
 }
 
-export function CoachChat({ videoId }: Props) {
+export function CoachChat({ videoId, className }: Props) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -69,7 +71,7 @@ export function CoachChat({ videoId }: Props) {
   };
 
   return (
-    <div className="flex h-[400px] flex-col border border-hairline bg-canvas">
+    <div className={`flex flex-col border border-hairline bg-canvas ${className ?? "h-[400px]"}`}>
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.map((msg, i) => (

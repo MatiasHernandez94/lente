@@ -28,6 +28,7 @@ import { OKRDashboard } from "@/components/okrs/OKRDashboard";
 import { AIInsightsPanel } from "@/components/app/AIInsightsPanel";
 import { ActionableReport } from "@/components/app/ActionableReport";
 import { VideoSeekProvider, useVideoSeek } from "@/components/sports/VideoSeekContext";
+import { useVisionInsights } from "@/lib/hooks/useVisionInsights";
 import type { ReportInsights } from "@/lib/analysis/insights";
 import type { UserRol } from "@/lib/schema";
 
@@ -194,9 +195,11 @@ interface Props {
   sourceRef?: string | null;
   sport: string;
   initialSeconds?: number;
+  /** La IA de visión solo corre para el dueño del video (su API es owner-only). */
+  visionEnabled?: boolean;
 }
 
-export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourceRef, sport, initialSeconds }: Props) {
+export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourceRef, sport, initialSeconds, visionEnabled = true }: Props) {
   const [status, setStatus] = useState<AnalysisStatus>("loading");
   const [data, setData] = useState<SportsData | null>(null);
   const [insights, setInsights] = useState<ReportInsights | null>(null);
@@ -212,6 +215,10 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourc
   // Incrementar reinicia el efecto de polling (p. ej. tras encolar un análisis).
   const [pollNonce, setPollNonce] = useState(0);
   const elapsed = useElapsed(startedAt);
+
+  // Correr en cuanto haya análisis listo: la visión necesita el video procesado.
+  // Se monta siempre (reglas de hooks) pero se activa solo en estado "ready".
+  const vision = useVisionInsights(videoId, visionEnabled && status === "ready" && data != null);
 
   const fetchAnalysis = useCallback(async () => {
     try {
@@ -519,7 +526,7 @@ export function VideoInsights({ videoId, videoTitle, videoUrl, sourceType, sourc
         )}
         {toolTab === "ai" && (
           <div className="p-4">
-            <AIInsightsPanel videoId={videoId} playerCount={data.tracking.summary.total_players_detected ?? 0} />
+            <AIInsightsPanel videoId={videoId} playerCount={data.tracking.summary.total_players_detected ?? 0} vision={vision} />
           </div>
         )}
         {toolTab === "none" && (

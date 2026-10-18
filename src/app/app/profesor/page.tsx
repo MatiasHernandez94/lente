@@ -6,6 +6,7 @@ import { getSessionUser } from "@/lib/session";
 import { listAlumnosConDetalle } from "@/lib/profile/service";
 import { listNotificaciones, markNotificacionesRead } from "@/lib/notificacion/service";
 import { VincularAlumnoButton } from "@/components/app/VincularAlumno";
+import { ConsultasPendientes } from "@/components/profesor/ConsultasPendientes";
 
 export const metadata: Metadata = { title: "Mis alumnos" };
 
@@ -29,6 +30,8 @@ export default async function ProfesorPage() {
           Revisa los análisis que te comparten tus alumnas y alumnos, y deja correcciones con un toque.
         </p>
       </header>
+
+      <ConsultasPendientes />
 
       {notificaciones.length > 0 ? (
         <section aria-label="Notificaciones">

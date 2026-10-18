@@ -1,9 +1,30 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { getClient } from "@/lib/db";
 
 function postError(operation: string, error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   throw new Error(`${operation}: ${message}`);
+}
+
+export interface NewNotificacionInput {
+  userId: string;
+  tipo: string;
+  mensaje: string;
+  refId?: string | null;
+}
+
+export async function createNotificacion(input: NewNotificacionInput): Promise<void> {
+  const { error } = await getClient().from("notificaciones").insert({
+    id: randomUUID(),
+    user_id: input.userId,
+    tipo: input.tipo,
+    mensaje: input.mensaje,
+    ref_id: input.refId ?? null,
+    leida: false,
+    created_at: new Date().toISOString(),
+  });
+  if (error) postError("createNotificacion", error);
 }
 
 export interface NotificacionRow {
