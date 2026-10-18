@@ -74,7 +74,7 @@ export function AIInsightsPanel({ videoId, playerCount, vision }: Props) {
           <Brain size={15} /> IA de visión
         </h3>
         <p className="mt-0.5 text-xs text-muted">
-          Detectamos lo que ocurre en el video con modelos de visión y lo cruzamos con tus métricas. {playerCount > 0 && `Sobre ${playerCount} jugadores detectados.`}
+          Detectamos lo que ocurre en el video con modelos de visión y lo cruzamos con tus métricas. {playerCount > 0 && `Sobre ${playerCount} personas detectadas.`}
         </p>
       </div>
 

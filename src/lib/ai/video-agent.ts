@@ -417,9 +417,9 @@ function summarizeAnalysisForAgent(video: VideoRow, analysis: Record<string, unk
       `El tracker descartó ${ghosts} trazas de ruido (arteofactos estáticos y detecciones de 1-2 frames) de ${rawTracks} brutas. El conteo de ${totalTracks} es de personas reales en escena, no de frames.`,
     );
   }
-  if (analysis.mode === "team" && totalTracks > 40) {
+  if (analysis.mode === "team" && totalTracks > 12) {
     limitations.push(
-      `Se detectaron ${totalTracks} trazas (sin re-identificación por dorsal). Representan menos personas reales por momento; usá métricas relativas, no el conteo absoluto.`,
+      `Se detectaron ${totalTracks} trazas. En baloncesto o deportes de cancha, el número absoluto suele exagerarse por re-tracking; priorizá métricas relativas (por equipo, posesión) antes de tomarlo como "jugadores".`,
     );
   }
 

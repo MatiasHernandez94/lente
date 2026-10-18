@@ -714,7 +714,7 @@ function SoloMetrics({ solo }: { solo: SoloAnalysis }) {
           <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted">
             <span>{intensityLabel(intensity.level)}</span>
             {intensity.avg_speed_mps !== undefined && (
-              <span>Vel. promedio: {intensity.avg_speed_mps.toFixed(1)} m/s</span>
+              <span>Vel. promedio: {(intensity.avg_speed_mps * 3.6).toFixed(1)} km/h</span>
             )}
           </div>
         </div>

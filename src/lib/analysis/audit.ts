@@ -127,7 +127,7 @@ const TEAM_REFERENCE: Record<string, Range> = {
     label: "≥ 4 jugadores para poder hablar de bloque táctico",
     code: ">=4",
     lowNote:
-      "muy pocos jugadores rastreados: no se puede evaluar un sistema táctico, solo acciones individuales",
+      "muy pocas personas rastreadas para evaluar un sistema táctico: enfocá en acciones individuales",
     highNote: "",
   },
   ball_tracked: {
@@ -426,7 +426,7 @@ function auditTeam(findings: AuditFinding[], input: Record<string, unknown>): vo
   findings.push(
     finding(
       "team_players",
-      "Jugadores rastreados",
+      "Personas rastreadas",
       `${players}`,
       teamRange.label,
       playerStatus,
