@@ -133,6 +133,17 @@ auto-deploy desde GitHub `MatiasHernandez94/lente`. (Hay otro proyecto duplicado
 de ~10 min (3109 frames a 5 fps) tardó **~15 min** vs ~2 min local. Para acelerar: subir plan, bajar
 `sample_fps`, o reusar el worker persistente (ya arreglado).
 
+**Tuning gratis aplicado (commit `c13b778`)** — 4x más rápido, medido:
+- Default `sample_fps` 5 → **3** (`src/lib/validation/api.ts` `sportsOptionsSchema` + fallback en
+  `src/lib/sports/service.ts`). Solo aplica a deportes de equipo: en `analyze_full.py` el modo solo
+  fuerza `max(sample_fps, 12)`.
+- Modelo **`yolov8n` (nano)** en vez de `yolov8s`: `ENV LENTE_YOLO_MODEL=yolov8n.pt` en el Dockerfile
+  (y variable en Railway) + `yolov8n.pt` pre-descargado con curl.
+- Medición (mismo video): **354 s (fps5+yolov8s) → 88 s (fps3+yolov8n)**. La inferencia es el 0–90%
+  del job; eventos/táctica/fatiga corren sobre el tracking y son rápidos.
+- Para ir más rápido todavía: GPU (Modal/RunPod/Replicate, ~30–60 s, pago por uso) o más vCPU
+  (rendimiento sublineal). ONNX Runtime/OpenVINO e `imgsz` menor son optimizaciones gratis pendientes.
+
 **Verificado end-to-end:** job `sports` → `processing` con progreso (`payload.progress.pct`) → `done`;
 JSON de 5.28 MB (`tracking`, `events`, `tactical`, `fatigue`) persistido en el bucket `analyses` y
 leído por la app.
