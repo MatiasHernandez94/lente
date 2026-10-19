@@ -95,3 +95,51 @@ como placeholder en los secretos; para buildear local hay que reemplazarlos (se 
 `.vercel/.env.production.local`, que está gitignoreado).
 
 Se borró `src/app/api/extraer-pendientes` (sin uso) para bajar una función.
+
+## Worker de análisis en Railway (18/10)
+
+La app vive en Vercel, pero el análisis deportivo (Python/YOLOv8) **no puede correr ahí**: no hay
+Python ni disco persistente. Por eso existe la cola `processing_jobs` + worker externo.
+**Sin worker corriendo, los jobs quedan `pending` para siempre** y la UI gira infinito.
+
+Proyecto Railway: `talented-eagerness` (workspace "Matias Hernandez's Projects"), servicio `lente`,
+auto-deploy desde GitHub `MatiasHernandez94/lente`. (Hay otro proyecto duplicado,
+`endearing-ambition`, con un servicio `lente` — borrar para no gastar recursos.)
+
+**Archivos de deploy (commit `c5c2194`):**
+- `Dockerfile`: node:22-bookworm-slim + python3 venv + `torch`/`torchvision` **CPU**
+  (`--index-url https://download.pytorch.org/whl/cpu`, evita ~2 GB CUDA) + `pip install -r
+  scripts/sports/requirements.txt` + `npm ci` + pesos YOLO pre-descargados con curl a
+  `scripts/sports/` (el código los busca en el cwd).
+- `scripts/sports/requirements.txt`: ultralytics, opencv-python-headless, scikit-learn, yt-dlp.
+- `railway.json`: builder Dockerfile, `startCommand: npm run worker`, 1 réplica, restart ON_FAILURE.
+- `.dockerignore`: excluye `node_modules`, `data`, `.git`, `.env*`, `*.pt`.
+
+**Env vars en Railway** (seteadas con `railway variable set ... --skip-deploys`): `SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `GEMINI_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`,
+`LENTE_PROCESSOR_QUEUE=1`, **`LENTE_SPORTS_WORKER=0`**.
+
+**Dos bugs encontrados:**
+1. `LENTE_SPORTS_WORKER=1` (worker Python persistente) **colgaba** el job: `worker.py` devolvía el
+   resultado sin el `requestId`, y el cliente Node (`src/lib/sports/service.ts:218`) sólo resuelve el
+   promise si el mensaje trae `requestId`. Fix en `scripts/sports/worker.py` (echo del `requestId`).
+   Nunca se había probado porque local el flag no está seteado. Igual se dejó el flag en `0`.
+2. **No hay dedupe de jobs por video**: clickear "analizar" varias veces encola varios jobs para el
+   mismo video (había 2-3 duplicados del mismo). Se limpiaron a mano. Convendría dedupe en
+   `enqueueProcessingJob`.
+
+**Rendimiento:** el contenedor Railway tiene 2 vCPU/1 GB y `CPU_USAGE ~2.5` (throttle a 2.0). Un video
+de ~10 min (3109 frames a 5 fps) tardó **~15 min** vs ~2 min local. Para acelerar: subir plan, bajar
+`sample_fps`, o reusar el worker persistente (ya arreglado).
+
+**Verificado end-to-end:** job `sports` → `processing` con progreso (`payload.progress.pct`) → `done`;
+JSON de 5.28 MB (`tracking`, `events`, `tactical`, `fatigue`) persistido en el bucket `analyses` y
+leído por la app.
+
+**Comandos:**
+- Login/link: `railway login` → `railway link -p talented-eagerness -e production -s lente`.
+- Setear vars desde `.env.local`: `set -a; source .env.local; set +a` y `railway variable set
+  "KEY=$KEY" --skip-deploys`.
+- Logs: `railway logs -d` / build `railway logs -b`; métricas: `railway metrics --cpu --memory`.
+- **Cuidado:** cualquier push dispara un redeploy que reinicia el contenedor y mata el job en curso.

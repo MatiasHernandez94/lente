@@ -68,6 +68,7 @@ def main():
         if not line:
             continue
 
+        cmd = None
         try:
             cmd = json.loads(line)
         except json.JSONDecodeError as e:
@@ -75,12 +76,18 @@ def main():
         else:
             result = handle_command(cmd)
 
+        # El requestId viaja de vuelta para que el cliente Node case la
+        # respuesta con la petición pendiente. Sin esto el cliente espera para
+        # siempre: el worker persistente quedaba colgado.
+        if isinstance(cmd, dict) and "requestId" in cmd:
+            result["requestId"] = cmd["requestId"]
+
         # Write result as JSON line
         print(json.dumps(result, separators=(',', ':')))
         sys.stdout.flush()
 
         # Exit if shutdown requested
-        if cmd.get("action") == "shutdown":
+        if isinstance(cmd, dict) and cmd.get("action") == "shutdown":
             break
 
 
