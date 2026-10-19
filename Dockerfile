@@ -12,6 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
+    LENTE_YOLO_MODEL=yolov8n.pt \
     PATH="/opt/venv/bin:$PATH"
 
 # python3: pipeline de análisis. ffmpeg: merge de yt-dlp y clips.
@@ -50,7 +51,10 @@ COPY . .
 
 # Pesos YOLO pre-descargados: el código los busca en el cwd de scripts/sports.
 # Sin esto, Ultralytics los baja en el primer job (lento y dependiente de red).
+# nano (`n`) es el default para velocidad; `s`/`x` quedan por si se cambia
+# LENTE_YOLO_MODEL. Ver Releases de ultralytics/assets.
 RUN cd scripts/sports \
+    && curl -fsSL -o yolov8n.pt https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt \
     && curl -fsSL -o yolov8s.pt https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8s.pt \
     && curl -fsSL -o yolov8x.pt https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8x.pt
 

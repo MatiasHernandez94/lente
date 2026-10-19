@@ -39,8 +39,8 @@ test("sample_fps acepta valores dentro de rango", () => {
   assert.deepEqual(validateInput({ sample_fps: 60 }, sportsOptionsSchema), { sample_fps: 60 });
 });
 
-test("sample_fps ausente cae en el default 5", () => {
-  assert.deepEqual(validateInput({}, sportsOptionsSchema), { sample_fps: 5 });
+test("sample_fps ausente cae en el default 3", () => {
+  assert.deepEqual(validateInput({}, sportsOptionsSchema), { sample_fps: 3 });
 });
 
 test("sample_fps = 0 se rechaza (rompería Python con ZeroDivisionError)", () => {
@@ -99,7 +99,7 @@ test("parseJsonBody lanza 400 con JSON malformado", async () => {
 });
 
 test("readJsonBody valida el cuerpo contra el schema", async () => {
-  assert.deepEqual(await readJsonBody(requestWith(""), sportsOptionsSchema), { sample_fps: 5 });
+  assert.deepEqual(await readJsonBody(requestWith(""), sportsOptionsSchema), { sample_fps: 3 });
   await assert.rejects(
     () => readJsonBody(requestWith('{"sample_fps":0}'), sportsOptionsSchema),
     (error: unknown) => error instanceof ApiServiceError && error.statusCode === 400,

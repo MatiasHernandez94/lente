@@ -76,7 +76,7 @@ export const sportsOptionsSchema = z.object({
     .int("Debe ser un número entero.")
     .min(1, "Debe ser al menos 1.")
     .max(60, "No puede superar 60.")
-    .default(5),
+    .default(3),
 });
 export type SportsOptions = z.infer<typeof sportsOptionsSchema>;
 

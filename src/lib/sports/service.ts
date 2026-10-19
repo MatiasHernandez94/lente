@@ -286,7 +286,7 @@ export async function startSportAnalysis(
 ): Promise<SportAnalysisResult> {
   const videoPath = await resolveVideoPath(video);
   const outputPath = getOutputPath(video.id);
-  const sampleFps = options.sample_fps ?? 5;
+  const sampleFps = options.sample_fps ?? 3;
   const sport = options.sport ?? video.sport ?? "general";
 
   const script = join(SCRIPTS_DIR, "analyze_full.py");
