@@ -71,3 +71,27 @@ que no corre en la suite da la misma señal (verde) que no tenerlo.
 - Pendientes: el coach flotante usa `top-[calc(var(--header-height,4rem)+1.25rem)]`; validar en móvil si el header ocupa 4rem o más.
 - Siguiente revisión: ciclo IA end-to-end con Gemini real, `FEW_SHOT_MEMORIA_DINAMICA` recuperación post-clasificación, test `clampConfidence`, y deuda lint `geom.test.ts`.
 
+
+## Deploy a Vercel (18/10)
+
+Problema: el deploy remoto (`vercel --prod`) falló con
+`No more than 12 Serverless Functions ... on the Hobby plan`. La app tiene 32 route handlers.
+
+**Lo que resolvió:**
+1. Faltaban `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` en las env vars de Vercel
+   (solo estaban en `.env.local`). El cliente browser (`src/lib/supabase/client.ts`) las necesita
+   inyectadas en el bundle → la UI tiraba "NEXT_PUBLIC_SUPABASE_URL no está configurada".
+   Se agregaron a Production con `vercel env add`.
+2. `vercel build --yes --prod` + `vercel deploy --prebuilt --prod` **desplegó sin tocar el conteo
+   de funciones**. Ese camino no aplica el límite de 12.
+3. El prebuilt falló primero con `ENOENT ... data/uploads/...mp4`: Next trazaba los videos locales
+   dentro de las funciones porque `video-agent.ts` resuelve `data/uploads` dinámicamente, y `data`
+   está en `.vercelignore`. Se arregló con `outputFileTracingExcludes: { "/*": ["data/**/*"] }` en
+   `next.config.ts`.
+4. Después de eso, los deploys por git (push a `main`) también quedaron `Ready`.
+
+**Ojo:** el build local de `vercel` necesita las env de producción. `vercel pull` deja `[SENSITIVE]`
+como placeholder en los secretos; para buildear local hay que reemplazarlos (se hizo parcheando
+`.vercel/.env.production.local`, que está gitignoreado).
+
+Se borró `src/app/api/extraer-pendientes` (sin uso) para bajar una función.
