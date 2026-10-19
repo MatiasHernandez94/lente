@@ -1,0 +1,33 @@
+# Artefactos locales y secretos que nunca deben ir a la imagen.
+node_modules
+.next
+out
+build
+coverage
+.vercel
+
+# Estado y datos locales (videos, resultados, caches de modelos).
+data
+
+# Repo y metadata de git.
+.git
+.gitignore
+
+# Entorno con secretos.
+.env
+.env.*
+!.env.example
+
+# Pesos y caches de modelos (se descargan en el build).
+*.pt
+scripts/sports/*.pt
+scripts/sports/__pycache__
+__pycache__
+*.pyc
+scripts/sports/models/*.task
+
+# Documentación y notas (no se necesitan en runtime).
+docs
+.ecc-memory
+README.md
+AGENTS.md

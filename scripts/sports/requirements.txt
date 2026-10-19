@@ -1,0 +1,12 @@
+# Dependencias del pipeline de análisis deportivo (Python).
+#
+# torch y torchvision NO van acá: se instalan aparte en el Dockerfile desde el
+# índice CPU de PyTorch para no bajar los wheels con CUDA (~2 GB de más).
+# ultralytics declara `torch>=1.8` y `torchvision>=0.9`, así que si ya están
+# instalados no los vuelve a bajar.
+ultralytics>=8.3,<9
+opencv-python-headless>=4.10,<5
+scikit-learn>=1.5,<2
+
+# Descarga de videos de YouTube (usado por downloadYouTubeVideo en YouTube jobs).
+yt-dlp>=2024.1
