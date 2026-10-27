@@ -45,6 +45,10 @@ export async function startExecution(video: VideoRow, exerciseId: string): Promi
   await updateExecutionStatus(video.id, "running");
   if (RUN_LOCAL) {
     await void runExecutionPipeline(video);
+  } else {
+    // Sin pipeline local el análisis real no puede correr: resolvemos con el
+    // generador sintético para que la vista no quede colgada en "running".
+    await generateDemoExecution(video.id, exerciseId);
   }
 }
 
@@ -72,9 +76,12 @@ async function runExecutionPipeline(video: VideoRow): Promise<void> {
 }
 
 async function ensureDemoExecution(video: VideoRow): Promise<void> {
-  if (!isDemoVideo(video)) return;
+  // Con el pipeline local activo (RUN_LOCAL) los videos reales los procesa el
+  // script; sólo los demos se generan sintéticos. Sin pipeline local, todos se
+  // resuelven con el generador (y los "running" huérfanos se regeneran).
+  if (!isDemoVideo(video) && RUN_LOCAL) return;
   const row = await getExecutionAnalysis(video.id);
-  if (row?.status === "running" || row?.status === "error") return;
+  if (RUN_LOCAL && (row?.status === "running" || row?.status === "error")) return;
   if (row?.status === "ready" && row.resultJson) {
     try {
       const data = JSON.parse(row.resultJson) as ExecutionResult;
@@ -115,7 +122,7 @@ export async function getChosenExercise(video: VideoRow): Promise<string | null>
 
 export async function chooseExercise(video: VideoRow, exerciseId: string): Promise<void> {
   getExercise(exerciseId);
-  if (isDemoVideo(video)) {
+  if (isDemoVideo(video) || !RUN_LOCAL) {
     await generateDemoExecution(video.id, exerciseId);
     return;
   }

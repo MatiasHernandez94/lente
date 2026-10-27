@@ -53,6 +53,10 @@ export async function startScout(video: VideoRow): Promise<void> {
 
   if (RUN_LOCAL) {
     await void runScoutPipeline(video);
+  } else {
+    // Sin pipeline local no hay visión real: resolver con el generador para no
+    // dejar la vista colgada en "running".
+    await generateDemoScout(video.id, video.sport, (video.players ?? []).length);
   }
 }
 
@@ -137,9 +141,10 @@ export async function getScoutStatus(video: VideoRow): Promise<ScoutStatus> {
 async function ensureDemoScout(video: VideoRow): Promise<void> {
   // Demos y, cuando el pipeline de visión no corre en local, videos subidos listos:
   // generamos seguimiento sintético por deporte para que quede interactivo de inmediato.
+  // Sin pipeline local los "running" huérfanos se regeneran en vez de colgarse.
   if (!isDemoVideo(video) && RUN_LOCAL) return;
   const row = await getScoutAnalysis(video.id);
-  if (row?.status === "running" || row?.status === "error") return;
+  if (RUN_LOCAL && (row?.status === "running" || row?.status === "error")) return;
   if (row?.status === "ready" && row.tracksJson) {
     try {
       const data = JSON.parse(row.tracksJson) as ScoutResultData;
