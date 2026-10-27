@@ -10,16 +10,16 @@ import type { UserRol } from "@/lib/schema";
  * Entra al panel como usuario de demostración con credenciales fijas:
  * admin.profesor@lente.dev (perfil profesor) o admin.alumno@lente.dev
  * (perfil alumno). No se envía ningún correo.
+ *
+ * El rol se pasa explícitamente desde una server action dedicada por botón y no
+ * por `name`/`value` en el `<button formAction={...}>`: React sobrescribe ese
+ * `name` al codificar la acción, así que el valor nunca llegaría.
  */
-export async function enterDemoAdmin(
-  _prevState: unknown,
-  formData: FormData,
-): Promise<{ success: boolean; message: string }> {
+async function enterDemoAs(rol: UserRol): Promise<{ success: boolean; message: string }> {
   if (!isDemoAdminEnabled()) {
     return { success: false, message: "El acceso de administrador de demostración está deshabilitado." };
   }
 
-  const rol = (formData.get("rol") as UserRol | null) ?? "profesor";
   if (!DEMO_USERS[rol]) {
     return { success: false, message: "Perfil de demostración inválido." };
   }
@@ -52,4 +52,18 @@ export async function enterDemoAdmin(
   }
 
   redirect(rol === "profesor" ? "/app/profesor" : "/app");
+}
+
+export async function enterDemoProfesor(
+  _prevState: unknown,
+  _formData: FormData,
+): Promise<{ success: boolean; message: string }> {
+  return enterDemoAs("profesor");
+}
+
+export async function enterDemoAlumno(
+  _prevState: unknown,
+  _formData: FormData,
+): Promise<{ success: boolean; message: string }> {
+  return enterDemoAs("alumno");
 }
