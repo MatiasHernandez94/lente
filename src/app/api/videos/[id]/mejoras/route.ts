@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { requireApiUser, serializeError } from "@/lib/api";
+import { assertSameOrigin, requireApiUser, serializeError } from "@/lib/api";
 import { getVideoById } from "@/lib/repo";
 import { getSportAnalysis } from "@/lib/sports/service";
 import {
@@ -29,6 +29,7 @@ export interface ImprovementsApiResponse {
 export async function POST(request: NextRequest, ctx: RouteContext<"/api/videos/[id]/mejoras">): Promise<NextResponse> {
   try {
     const user = await requireApiUser();
+    assertSameOrigin(request);
     const { id } = await ctx.params;
 
     const video = await getVideoById(id);

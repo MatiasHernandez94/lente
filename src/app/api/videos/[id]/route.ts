@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { requireApiUser, serializeError } from "@/lib/api";
+import { assertSameOrigin, requireApiUser, serializeError } from "@/lib/api";
 import { getAnalysisForVideo, getVideoById, updateVideo } from "@/lib/repo";
 import { readJsonBody, videoPatchSchema } from "@/lib/validation/api";
 
@@ -24,6 +24,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext<"/api/videos/
 export async function PATCH(request: NextRequest, ctx: RouteContext<"/api/videos/[id]">): Promise<NextResponse> {
   try {
     const user = await requireApiUser();
+    assertSameOrigin(request);
     const { id } = await ctx.params;
 
     const video = await getVideoById(id);

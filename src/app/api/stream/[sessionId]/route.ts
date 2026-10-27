@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireApiUser, serializeError } from "@/lib/api";
+import { assertSameOrigin, requireApiUser, serializeError } from "@/lib/api";
 import { getStreamSession, sendFrame } from "@/lib/streaming/service";
 import { getVideoById } from "@/lib/repo";
 import { readJsonBody, streamFrameSchema } from "@/lib/validation/api";
@@ -28,6 +28,7 @@ export async function POST(
 ) {
   try {
     const { sessionId } = await params;
+    assertSameOrigin(req);
     const owner = await requireSessionOwner(sessionId);
     if (!owner) {
       return Response.json({ error: "Sesión no encontrada" }, { status: 404 });

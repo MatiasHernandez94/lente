@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiUser, serializeError } from "@/lib/api";
+import { assertSameOrigin, requireApiUser, serializeError } from "@/lib/api";
 import { getVideoById, getAnalysisForVideo } from "@/lib/repo";
 import { listOKRsForVideo } from "@/lib/okrs/service";
 import { generateCoachResponse, type CoachMessage } from "@/lib/ai/coach";
@@ -53,6 +53,7 @@ export async function POST(
 ) {
   try {
     const user = await requireApiUser();
+    assertSameOrigin(req);
     const { id } = await params;
     const video = await getVideoById(id);
     if (!video || video.userId !== user.id) {

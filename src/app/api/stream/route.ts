@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiUser, serializeError } from "@/lib/api";
+import { assertSameOrigin, requireApiUser, serializeError } from "@/lib/api";
 import { getVideoById } from "@/lib/repo";
 import { createStreamSession, closeStreamSession } from "@/lib/streaming/service";
 import { readJsonBody, streamActionSchema } from "@/lib/validation/api";
@@ -9,6 +9,7 @@ const sessionMap = new Map<string, string>(); // userId -> sessionId
 export async function POST(req: NextRequest) {
   try {
     const user = await requireApiUser();
+    assertSameOrigin(req);
 
     const { action, videoId } = await readJsonBody(req, streamActionSchema);
 

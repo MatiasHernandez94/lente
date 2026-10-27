@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { requireApiUser, serializeError } from "@/lib/api";
+import { assertSameOrigin, requireApiUser, serializeError } from "@/lib/api";
 import { getVideoById, getUserById } from "@/lib/repo";
 import { isAlumnoOf, listTutors } from "@/lib/profile/service";
 import {
@@ -83,6 +83,7 @@ export async function POST(
 ): Promise<NextResponse> {
   try {
     const user = await requireApiUser();
+    assertSameOrigin(request);
     const { id } = await ctx.params;
 
     const video = await getVideoById(id);

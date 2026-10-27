@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiUser, serializeError } from "@/lib/api";
+import { assertSameOrigin, requireApiUser, serializeError } from "@/lib/api";
 import { readJsonBody, okrCreateSchema } from "@/lib/validation/api";
 import { getVideoById } from "@/lib/repo";
 import { createOKR, listOKRsForVideo } from "@/lib/okrs/service";
@@ -38,6 +38,7 @@ export async function POST(
 ) {
   try {
     const user = await requireApiUser();
+    assertSameOrigin(req);
     const { id } = await params;
     const video = await getVideoById(id);
     if (!video || video.userId !== user.id) {

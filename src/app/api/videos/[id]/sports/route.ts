@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { requireApiUser, serializeError } from "@/lib/api";
+import { assertSameOrigin, requireApiUser, serializeError } from "@/lib/api";
 import { getVideoById } from "@/lib/repo";
 import { ApiServiceError } from "@/lib/services/videoService";
 import {
@@ -90,6 +90,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/videos/[
 export async function POST(request: NextRequest, ctx: RouteContext<"/api/videos/[id]/sports">): Promise<NextResponse> {
   try {
     const user = await requireApiUser();
+    assertSameOrigin(request);
     const { id } = await ctx.params;
     const video = await getVideoById(id);
     if (!video || video.userId !== user.id) {
