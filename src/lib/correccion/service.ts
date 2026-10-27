@@ -56,6 +56,32 @@ export async function listCorreccionesByVideo(videoId: string): Promise<Correcci
   });
 }
 
+export interface CorreccionParaAlumno extends CorreccionConProfesor {
+  videoTitle: string;
+}
+
+export async function listCorreccionesByAlumno(alumnoId: string): Promise<CorreccionParaAlumno[]> {
+  const { data, error } = await getClient()
+    .from("correcciones")
+    .select(
+      "id, video_id, profesor_id, alumno_id, mensaje, minuto_inicio, minuto_fin, clip_url, created_at, users!correcciones_profesor_id_fkey(name), videos(title)",
+    )
+    .eq("alumno_id", alumnoId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) postError("listCorreccionesByAlumno", error);
+
+  const rows = data ?? [];
+  return rows.map((row) => {
+    const parsed = parseCorreccion(row);
+    return {
+      ...parsed,
+      profesorName: (row.users as { name?: string } | undefined)?.name ?? "Profesor",
+      videoTitle: (row.videos as { title?: string } | undefined)?.title ?? "Video",
+    };
+  });
+}
+
 export async function deleteCorreccion(id: string): Promise<void> {
   const { error } = await getClient().from("correcciones").delete().eq("id", id);
   if (error) postError("deleteCorreccion", error);

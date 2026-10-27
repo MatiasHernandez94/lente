@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Plus, ArrowRight } from "lucide-react";
 import { DemoExamplesButton } from "@/components/app/DemoExamplesButton";
+import { AlumnoHome } from "@/components/app/AlumnoHome";
+import { StatCard } from "@/components/app/StatCard";
 import { SportTag } from "@/components/ui/Tag";
 import { getSessionUser } from "@/lib/session";
 import { listUserVideos } from "@/lib/services/videoService";
@@ -9,24 +11,10 @@ import { formatShortDate } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Resumen" };
 
-interface StatCardProps {
-  label: string;
-  value: string | number;
-  detail: string;
-}
-
-function StatCard({ label, value, detail }: StatCardProps) {
-  return (
-    <div className="border border-hairline bg-canvas px-5 py-4">
-      <span className="label text-muted">{label}</span>
-      <p className="table-num mt-1 text-3xl font-semibold tracking-tight text-ink">{value}</p>
-      <p className="mt-1 text-xs text-soft">{detail}</p>
-    </div>
-  );
-}
-
 export default async function DashboardPage() {
   const user = await getSessionUser();
+  if (user?.rol === "alumno") return <AlumnoHome user={user} />;
+
   const videos = user ? await listUserVideos(user.id) : [];
 
   const ready = videos.filter((video) => video.status === "ready");
