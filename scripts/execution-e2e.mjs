@@ -35,7 +35,7 @@ const userId = "execution-e2e-user";
 const now = new Date().toISOString();
 
 const { error: userError } = await supabase.from("users").upsert(
-  { id: userId, name: "Usuario E2E Ejecucion", email, password_hash: "x", created_at: now },
+  { id: userId, name: "Usuario E2E Ejecucion", email, created_at: now },
   { onConflict: "id" },
 );
 if (userError) {

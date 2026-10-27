@@ -17,7 +17,6 @@ async function createTestUser() {
     id,
     name: "E2E Tester",
     email,
-    password_hash: "unused",
     created_at: new Date().toISOString(),
   });
   if (error) throw new Error(`insert user: ${error.message}`);
