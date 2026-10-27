@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { angle3, controlScore, buildReps, scoreKeyPoint, evaluateExercise } from "./geom.ts";
 import { EXERCISES } from "./exercises.ts";
+import type { AngleSpec } from "./exercises.ts";
 import type { BodyPose, ExecutionFrame, ExecutionResult } from "./types.ts";
 
 test("angle3 calcula 90 grados en un vértice recto", () => {
@@ -55,17 +56,17 @@ test("buildReps detecta el número de picos de una señal senoidal", () => {
 });
 
 test("scoreKeyPoint puntúa el rango según el objetivo", () => {
-  const squat: any = { key: "rodilla", label: "Rodilla", side: "eje", points: ["right_hip","right_knee","right_ankle"] as any, targetDeg: [80, 100], keyPoint: "min" as const };
+  const squat: AngleSpec = { key: "rodilla", label: "Rodilla", side: "eje", points: ["right_hip","right_knee","right_ankle"], targetDeg: [80, 100], keyPoint: "min" };
   assert.equal(scoreKeyPoint(squat, 90), 100);
   assert.equal(scoreKeyPoint(squat, 100), 100);
   assert.ok(scoreKeyPoint(squat, 140) < 100);
   assert.ok(scoreKeyPoint(squat, 170) < scoreKeyPoint(squat, 120));
 
-  const plank: any = { key: "tronc", label: "Tronco", side: "eje", points: ["right_shoulder","right_hip","right_knee"] as any, targetDeg: [175, 185], keyPoint: "value" as const };
+  const plank: AngleSpec = { key: "tronc", label: "Tronco", side: "eje", points: ["right_shoulder","right_hip","right_knee"], targetDeg: [175, 185], keyPoint: "value" };
   assert.equal(scoreKeyPoint(plank, 180), 100);
   assert.ok(scoreKeyPoint(plank, 160) < 100);
 
-  const shoulder: any = { key: "hombro", label: "Hombro", side: "eje", points: ["right_hip","right_shoulder","right_elbow"] as any, targetDeg: [160, 180], keyPoint: "max" as const };
+  const shoulder: AngleSpec = { key: "hombro", label: "Hombro", side: "eje", points: ["right_hip","right_shoulder","right_elbow"], targetDeg: [160, 180], keyPoint: "max" };
   assert.equal(scoreKeyPoint(shoulder, 170), 100);
   assert.ok(scoreKeyPoint(shoulder, 120) < 100);
 });
