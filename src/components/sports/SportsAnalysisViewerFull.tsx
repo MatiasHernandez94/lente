@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -102,22 +102,28 @@ export function SportsAnalysisViewerFull({ videoId, videoUrl, sport }: Props) {
 
   const overlay = useOverlaySettings();
 
-  const fetchAnalysis = useCallback(async () => {
-    try {
-      // El overlay dibuja sobre el video, así que necesita los frames por
-      // muestra; el resto de la UI usa la misma respuesta sin pedirlos.
-      const res = await fetch(`/api/videos/${videoId}/sports?include=frames`);
-      if (!res.ok) throw new Error("Error");
-      const data = await res.json();
-      setStatus(data.status);
-      if (data.analysis) setAnalysis(data.analysis);
-    } catch {
-      setError("Error al cargar el análisis deportivo");
-      setStatus("error");
-    }
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        // El overlay dibuja sobre el video, así que necesita los frames por
+        // muestra; el resto de la UI usa la misma respuesta sin pedirlos.
+        const res = await fetch(`/api/videos/${videoId}/sports?include=frames`);
+        if (!res.ok) throw new Error("Error");
+        const data = await res.json();
+        if (cancelled) return;
+        setStatus(data.status);
+        if (data.analysis) setAnalysis(data.analysis);
+      } catch {
+        if (cancelled) return;
+        setError("Error al cargar el análisis deportivo");
+        setStatus("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [videoId]);
-
-  useEffect(() => { fetchAnalysis(); }, [fetchAnalysis]);
 
   const startAnalysis = async () => {
     setStatus("loading");

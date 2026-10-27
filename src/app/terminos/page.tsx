@@ -39,7 +39,7 @@ export default function TerminosPage() {
 
         <h2 className="text-base font-semibold text-ink">4. Eliminación de cuenta</h2>
         <p>
-          Puede eliminar su cuenta en cualquier momento desde la sección "Mi perfil". La eliminación es
+          Puede eliminar su cuenta en cualquier momento desde la sección &quot;Mi perfil&quot;. La eliminación es
           permanente e irreversible: se borran su perfil, videos, análisis y relaciones con otros usuarios.
         </p>
 

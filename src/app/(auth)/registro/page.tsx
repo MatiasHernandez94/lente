@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { RegistroForm } from "@/components/auth/RegistroForm";
 import { listDeportes } from "@/lib/profile/service";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = { title: "Crear cuenta" };
 
 export default async function RegistroPage() {

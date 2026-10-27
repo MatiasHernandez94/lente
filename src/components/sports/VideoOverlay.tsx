@@ -86,6 +86,8 @@ export function VideoOverlay({ videoRef, data, settings: userSettings }: Props) 
     return closest;
   }, [data.frames, videoRef]);
 
+  const drawFrameRef = useRef<() => void>(() => {});
+
   const drawFrame = useCallback(() => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
@@ -235,10 +237,11 @@ export function VideoOverlay({ videoRef, data, settings: userSettings }: Props) 
       ctx.stroke();
     }
 
-    animationRef.current = requestAnimationFrame(drawFrame);
+    animationRef.current = requestAnimationFrame(() => drawFrameRef.current());
   }, [data.video, getCurrentFrame, settings, videoRef]);
 
   useEffect(() => {
+    drawFrameRef.current = drawFrame;
     const video = videoRef.current;
     if (!video) return;
 
