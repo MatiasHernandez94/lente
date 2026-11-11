@@ -4,6 +4,7 @@ import { sendAlert } from "./alerts";
 import type { ProcessingJobKind, ProcessingJobRow, ProcessingJobStatus } from "./schema";
 import { retryDelayMs } from "./retry";
 import { staleMinutesForKind } from "./processor-status";
+import { createOrReuseActiveJob } from "./processor-dedupe";
 
 export const PROCESSOR_QUEUE_FLAG = "LENTE_PROCESSOR_QUEUE";
 
@@ -94,50 +95,13 @@ export async function getJobById(id: string): Promise<ProcessingJobRow | null> {
 }
 
 /**
- * Elección del único job activo para (video, kind).
- *
- * `insert` + comprobar no es atómico: cuatro POST simultáneos no ven ningún job
- * activo y los cuatro insertan. Tras insertar, releemos los jobs activos y gana
- * el más antiguo; el perdedor borra el suyo y devuelve el ganador, así solo uno
- * llega a analizar. El desempate por id hace la elección determinista.
- */
-async function electSingleActiveJob(
-  myJobId: string,
-  videoId: string,
-  kind: ProcessingJobKind,
-): Promise<ProcessingJobRow> {
-  const { data, error } = await getClient()
-    .from("processing_jobs")
-    .select(JOB_COLUMNS)
-    .eq("video_id", videoId)
-    .eq("kind", kind)
-    .in("status", ["pending", "processing"])
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new Error(`electSingleActiveJob: ${error.message}`);
-
-  const winner = data ? parseJob(data) : null;
-  if (!winner || winner.id === myJobId) {
-    if (!winner) throw new Error("electSingleActiveJob: el job insertado no aparece");
-    return winner;
-  }
-
-  // Perdemos la carrera: este job no debe procesarse. Lo borramos por id (sin
-  // filtro de estado: en inline se insertó como `processing`, no `pending`).
-  await getClient().from("processing_jobs").delete().eq("id", myJobId);
-  return winner;
-}
-
-/**
  * Registra un job directamente en `processing`, para ejecuciones en línea
  * (sin cola) que quieren ser visibles e idempotentes.
  *
  * Se inserta ya en `processing` a propósito: si se insertara en `pending`, el
  * worker externo podría reclamarlo en esa ventana y analizar el mismo video en
  * paralelo. Insertar en `processing` hace que un POST concurrente lo vea como
- * job activo; `electSingleActiveJob` resuelve el resto de la carrera.
+ * job activo; el índice único resuelve el resto de la carrera.
  *
  * @returns el job con el que este request debe trabajar: el suyo si ganó, o el
  *          del request que ganó (en cuyo caso no debe analizar nada).
@@ -147,27 +111,26 @@ export async function startInlineProcessingJob(
   kind: ProcessingJobKind,
   payload: Record<string, unknown> = {},
 ): Promise<{ job: ProcessingJobRow; isWinner: boolean }> {
-  const existing = await getActiveProcessingJob(videoId, kind);
-  if (existing) return { job: existing, isWinner: false };
-
   const now = new Date().toISOString();
-  const { data, error } = await getClient()
-    .from("processing_jobs")
-    .insert({
-      video_id: videoId,
-      kind,
-      payload: payload ?? {},
-      status: "processing",
-      started_at: now,
-      updated_at: now,
-      attempts: 1,
-    })
-    .select(JOB_COLUMNS)
-    .single();
-  if (error) throw new Error(`startInlineProcessingJob: ${error.message}`);
-
-  const job = await electSingleActiveJob(String(data.id), videoId, kind);
-  return { job, isWinner: job.id === String(data.id) };
+  return createOrReuseActiveJob({
+    find: () => getActiveProcessingJob(videoId, kind),
+    insert: async () => {
+      const { data, error } = await getClient()
+        .from("processing_jobs")
+        .insert({
+          video_id: videoId,
+          kind,
+          payload: payload ?? {},
+          status: "processing",
+          started_at: now,
+          updated_at: now,
+          attempts: 1,
+        })
+        .select(JOB_COLUMNS)
+        .single();
+      return { job: data ? parseJob(data) : null, error };
+    },
+  });
 }
 
 /**
@@ -200,19 +163,17 @@ export async function enqueueProcessingJob(
   kind: ProcessingJobKind,
   payload: Record<string, unknown> = {},
 ): Promise<{ job: ProcessingJobRow; isWinner: boolean }> {
-  const existing = await getActiveProcessingJob(videoId, kind);
-  if (existing) return { job: existing, isWinner: false };
-
-  const { data, error } = await getClient()
-    .from("processing_jobs")
-    .insert({ video_id: videoId, kind, payload: payload ?? {} })
-    .select(JOB_COLUMNS)
-    .single();
-  if (error) throw new Error(`enqueueProcessingJob: ${error.message}`);
-
-  // Cola compartida: sin elección, N POST simultáneos encolan N análisis.
-  const job = await electSingleActiveJob(String(data.id), videoId, kind);
-  return { job, isWinner: job.id === String(data.id) };
+  return createOrReuseActiveJob({
+    find: () => getActiveProcessingJob(videoId, kind),
+    insert: async () => {
+      const { data, error } = await getClient()
+        .from("processing_jobs")
+        .insert({ video_id: videoId, kind, payload: payload ?? {} })
+        .select(JOB_COLUMNS)
+        .single();
+      return { job: data ? parseJob(data) : null, error };
+    },
+  });
 }
 
 /**
