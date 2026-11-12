@@ -8,7 +8,8 @@ export default defineRailway(() => {
     source: github("MatiasHernandez94/lente", { branch: "main", checkSuites: false }),
     build: { buildEnvironment: "V3", builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
     start: "npm run worker",
-    deploy: { restartPolicyType: "ON_FAILURE", restartPolicyMaxRetries: 10 },
+    // Railway defaults to ON_FAILURE with at most 10 restarts. Its API
+    // normalizes those defaults to null, so declaring them causes plan drift.
     replicas: { "iad": 1 },
   });
 
