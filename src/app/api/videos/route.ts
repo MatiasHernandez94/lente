@@ -26,7 +26,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const { title, sport, sourceType, sourceRef, durationSeconds, players } = parsed.data;
+    const { title, sport, sourceType, sourceRef, durationSeconds, players, fingerprint } = parsed.data;
 
     if ((sourceType === "camera" || sourceType === "upload") && !sourceRef) {
       return NextResponse.json(
@@ -46,6 +46,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       sourceRef: sourceRef ?? null,
       durationSeconds,
       players,
+      fingerprint: sourceType === "upload" ? fingerprint : undefined,
     });
 
     return NextResponse.json({ video }, { status: 201 });

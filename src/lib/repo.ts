@@ -122,6 +122,7 @@ export async function createVideo(input: {
   durationSeconds: number;
   players: string[];
   createdAt: string;
+  fingerprint?: string;
 }): Promise<VideoRow> {
   const { data, error } = await getClient()
     .from("videos")
@@ -137,6 +138,7 @@ export async function createVideo(input: {
       status: "pending",
       created_at: input.createdAt,
       updated_at: input.createdAt,
+      fingerprint_v1: input.fingerprint ?? null,
     })
     .select(VIDEO_COLUMNS)
     .single();

@@ -57,6 +57,7 @@ export interface NewVideoInput {
   sourceRef: string | null;
   durationSeconds: number;
   players: string[];
+  fingerprint?: string;
 }
 
 export async function createPendingVideo(input: NewVideoInput): Promise<VideoRow> {
@@ -70,6 +71,7 @@ export async function createPendingVideo(input: NewVideoInput): Promise<VideoRow
     durationSeconds: input.durationSeconds,
     players: input.players,
     createdAt: new Date().toISOString(),
+    fingerprint: input.fingerprint,
   });
 }
 

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
 import { SPORTS } from "@/lib/sports";
 import { uploadVideoFile } from "@/lib/videos/client";
+import { fingerprintVideo } from "@/lib/videos/fingerprint";
 
 const SOURCES: { value: SourceType; label: string; hint: string; icon: typeof Camera }[] = [
   { value: "upload", label: "Subir archivo", hint: "MP4, WebM o MOV · máx. 250 MB", icon: Upload },
@@ -103,6 +104,8 @@ export function VideoUploadZone() {
   const [cameraBlob, setCameraBlob] = useState<Blob | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [duplicate, setDuplicate] = useState<{ id: string; title: string; sport: string } | null>(null);
+  const submittingRef = useRef(false);
 
   const onBlob = (blob: Blob | null) => {
     setCameraBlob(blob);
@@ -116,6 +119,7 @@ export function VideoUploadZone() {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
     setUploadedFile(file);
+    setDuplicate(null);
     setError(null);
   };
 
@@ -128,15 +132,38 @@ export function VideoUploadZone() {
     return uploadVideoFile(uploadFileArg);
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitVideo = async (allowDuplicate = false) => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setError(null);
     setIsSubmitting(true);
 
     try {
       let sourceRef: string | null = null;
       let title = "Video sin título";
+      let fingerprint: string | undefined;
       const isYt = source === "youtube";
+
+      if (isUpload && uploadedFile) {
+        if (uploadedFile.size > 250 * 1024 * 1024) throw new Error("El video supera el límite de 250 MB.");
+        fingerprint = await fingerprintVideo(uploadedFile);
+        if (!allowDuplicate) {
+          const check = await fetch("/api/videos/duplicate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fingerprint }),
+          });
+          const result = (await check.json()) as { video?: { id: string; title: string; sport: string } | null; error?: string };
+          if (!check.ok) throw new Error(result.error ?? "No se pudo comprobar si el video ya existe.");
+          if (!("video" in result)) throw new Error("No se pudo comprobar si el video ya existe. Intentá de nuevo.");
+          if (result.video) {
+            setDuplicate(result.video);
+            setIsSubmitting(false);
+            submittingRef.current = false;
+            return;
+          }
+        }
+      }
 
       if (isYt) {
         if (!/^https?:\/\/(www\.)?youtu(\.be|be\.com)\//.test(ytUrl.trim())) {
@@ -159,6 +186,7 @@ export function VideoUploadZone() {
           sourceRef,
           durationSeconds: 1800,
           players: [],
+          fingerprint,
         }),
       });
       const created = (await createRes.json()) as { video?: { id: string }; error?: string };
@@ -180,7 +208,13 @@ export function VideoUploadZone() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo completar el análisis.");
       setIsSubmitting(false);
+      submittingRef.current = false;
     }
+  };
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void submitVideo();
   };
 
   return (
@@ -204,7 +238,8 @@ export function VideoUploadZone() {
                 name="sport"
                 value={item.value}
                 checked={sport === item.value}
-                onChange={() => setSport(item.value)}
+                disabled={isSubmitting}
+                onChange={() => { setSport(item.value); setDuplicate(null); }}
                 className="sr-only"
               />
               {sport === item.value ? (
@@ -243,7 +278,8 @@ export function VideoUploadZone() {
                 name="source"
                 value={value}
                 checked={source === value}
-                onChange={() => setSource(value)}
+                disabled={isSubmitting}
+                onChange={() => { setSource(value); setDuplicate(null); }}
                 className="sr-only"
               />
               <Icon size={20} strokeWidth={1.6} className="mb-2 text-ink" aria-hidden="true" />
@@ -263,10 +299,12 @@ export function VideoUploadZone() {
               type="file"
               accept="video/mp4,video/webm,video/quicktime"
               onChange={handleFileChange}
+              disabled={isSubmitting}
               className="sr-only"
             />
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={() => fileInputRef.current?.click()}
               className="flex w-full flex-col items-center justify-center gap-2 border border-dashed border-ink/20 bg-canvas px-6 py-12 transition-colors hover:border-ink"
             >
@@ -333,6 +371,23 @@ export function VideoUploadZone() {
       </section>
 
       {/* Error */}
+      {duplicate && (
+        <section aria-live="polite" className="space-y-3 border border-ink/30 bg-surface p-4">
+          <h3 className="text-sm font-medium text-ink">Este archivo ya está en tu cuenta</h3>
+          <p className="text-sm text-soft">
+            {duplicate.title} · {SPORTS.find((item) => item.value === duplicate.sport)?.label ?? duplicate.sport}.
+            Podés ver el video existente o crear un análisis nuevo.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => router.push(`/app/videos/${duplicate.id}`)}>
+              Ver video existente
+            </Button>
+            <Button type="button" variant="primary" disabled={isSubmitting} onClick={() => void submitVideo(true)}>
+              Analizar de nuevo
+            </Button>
+          </div>
+        </section>
+      )}
       {error && (
         <p role="alert" className="border border-red-900/30 bg-red-50 px-4 py-3 text-sm text-red-900">
           {error}
@@ -341,7 +396,7 @@ export function VideoUploadZone() {
 
       {/* Submit */}
       <div className="flex items-center gap-4">
-        <Button type="submit" size="lg" disabled={isSubmitting || (!uploadedFile && !cameraBlob && !ytUrl)}>
+        <Button type="submit" size="lg" disabled={isSubmitting || !!duplicate || (!uploadedFile && !cameraBlob && !ytUrl)}>
           {isSubmitting ? (
             <span className="inline-flex items-center gap-2">
               <LoaderCircle size={16} className="animate-spin" /> Analizando…

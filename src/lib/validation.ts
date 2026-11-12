@@ -99,6 +99,7 @@ export const createVideoSchema = z.object({
   sport: z.enum(["general", "futbol", "padel", "voleibol", "baloncesto"]).default("general"),
   sourceType: z.enum(["camera", "upload", "youtube"]),
   sourceRef: z.string().max(500).trim().nullable().optional(),
+  fingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   durationSeconds: z.number().int().min(120).max(86400),
   players: z
     .array(
