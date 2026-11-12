@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { assertSameOrigin, requireApiUser, serializeError } from "@/lib/api";
 import { createPendingVideo, listUserVideos } from "@/lib/services/videoService";
 import { createVideoSchema } from "@/lib/validation";
+import { verifyUploadReceipt } from "@/lib/videos/upload-receipt";
 
 export async function GET(): Promise<NextResponse> {
   try {
@@ -26,13 +27,17 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const { title, sport, sourceType, sourceRef, durationSeconds, players, fingerprint } = parsed.data;
+    const { title, sport, sourceType, sourceRef, durationSeconds, players, fingerprint, uploadReceipt } = parsed.data;
 
     if ((sourceType === "camera" || sourceType === "upload") && !sourceRef) {
       return NextResponse.json(
         { error: "Debe subir el archivo antes de registrar el video." },
         { status: 400 },
       );
+    }
+    if ((sourceType === "camera" || sourceType === "upload") &&
+        !verifyUploadReceipt(uploadReceipt ?? "", user.id, sourceRef!, process.env.SUPABASE_SERVICE_ROLE_KEY ?? "")) {
+      return NextResponse.json({ error: "La subida no pertenece a esta cuenta o venció. Subí el video nuevamente." }, { status: 403 });
     }
     if (sourceType === "youtube" && !sourceRef?.match(/^https?:\/\/(www\.)?youtu(\.be|be\.com)\//)) {
       return NextResponse.json({ error: "La URL de YouTube no es válida." }, { status: 400 });

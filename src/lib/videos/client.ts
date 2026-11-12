@@ -10,7 +10,7 @@ const ALLOWED_VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm"];
  * firmada, evitando el límite de body de las API routes en producción.
  * Devuelve el ref del archivo (sourceRef del video).
  */
-export async function uploadVideoFile(file: File): Promise<string> {
+export async function uploadVideoFile(file: File): Promise<{ file: string; receipt: string }> {
   if (file.size > MAX_UPLOAD_BYTES) {
     throw new Error("El video supera el límite de 250 MB.");
   }
@@ -29,9 +29,10 @@ export async function uploadVideoFile(file: File): Promise<string> {
     file?: string;
     path?: string;
     token?: string;
+    receipt?: string;
     error?: string;
   };
-  if (!signRes.ok || !signBody.file || !signBody.path || !signBody.token) {
+  if (!signRes.ok || !signBody.file || !signBody.path || !signBody.token || !signBody.receipt) {
     throw new Error(signBody.error ?? "No se pudo iniciar la subida del video.");
   }
 
@@ -52,5 +53,5 @@ export async function uploadVideoFile(file: File): Promise<string> {
     body: JSON.stringify({ file: signBody.file }),
   }).catch(() => {});
 
-  return signBody.file;
+  return { file: signBody.file, receipt: signBody.receipt };
 }

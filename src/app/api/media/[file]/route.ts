@@ -6,6 +6,9 @@ import { Readable } from "node:stream";
 import { join, extname } from "node:path";
 import { requireApiUser, serializeError } from "@/lib/api";
 import { resolveVideoSource } from "@/lib/videos/storage";
+import { canReadMedia } from "@/lib/videos/media-access";
+import { getClient } from "@/lib/db";
+import { isAlumnoOf } from "@/lib/profile/service";
 
 const UPLOADS_DIR = join(process.cwd(), "data", "uploads");
 const SAFE_NAME = /^[0-9a-f-]{36}\.(mp4|mov|webm)$/;
@@ -18,10 +21,20 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 
 export async function GET(_request: NextRequest, ctx: RouteContext<"/api/media/[file]">): Promise<NextResponse> {
   try {
-    await requireApiUser();
+    const user = await requireApiUser();
     const { file } = await ctx.params;
 
     if (!SAFE_NAME.test(file)) {
+      return NextResponse.json({ error: "Recurso no encontrado." }, { status: 404 });
+    }
+
+    const { data, error } = await getClient().from("videos")
+      .select("user_id")
+      .eq("source_ref", file)
+      .in("source_type", ["upload", "camera"]);
+    if (error) throw new Error(`media access lookup: ${error.message}`);
+    const allowed = await canReadMedia(user, (data ?? []).map((row) => String(row.user_id)), isAlumnoOf);
+    if (!allowed) {
       return NextResponse.json({ error: "Recurso no encontrado." }, { status: 404 });
     }
 
@@ -34,7 +47,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext<"/api/media/[
         headers: {
           "Content-Type": mime,
           "Content-Length": String(fileStat.size),
-          "Cache-Control": "private, max-age=3600",
+          "Cache-Control": "private, no-store",
         },
       });
     }

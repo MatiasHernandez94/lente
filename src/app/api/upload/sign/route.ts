@@ -3,13 +3,14 @@ import { randomUUID } from "node:crypto";
 import { extname } from "node:path";
 import { assertSameOrigin, requireApiUser, serializeError } from "@/lib/api";
 import { createVideoSignedUploadUrl } from "@/lib/videos/storage";
+import { createUploadReceipt } from "@/lib/videos/upload-receipt";
 
 const MAX_UPLOAD_BYTES = 250 * 1024 * 1024;
 const ALLOWED_VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm"];
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
-    await requireApiUser();
+    const user = await requireApiUser();
     assertSameOrigin(request);
 
     const body = (await request.json()) as { fileName?: string; size?: number };
@@ -38,7 +39,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    return NextResponse.json({ file: ref, uploadUrl: signed.signedUrl, path: `video/${ref}`, token: signed.token });
+    const receipt = createUploadReceipt(user.id, ref, process.env.SUPABASE_SERVICE_ROLE_KEY ?? "");
+    return NextResponse.json({ file: ref, uploadUrl: signed.signedUrl, path: `video/${ref}`, token: signed.token, receipt });
   } catch (error) {
     return serializeError(error);
   }

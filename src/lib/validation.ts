@@ -100,6 +100,7 @@ export const createVideoSchema = z.object({
   sourceType: z.enum(["camera", "upload", "youtube"]),
   sourceRef: z.string().max(500).trim().nullable().optional(),
   fingerprint: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  uploadReceipt: z.string().max(100).optional(),
   durationSeconds: z.number().int().min(120).max(86400),
   players: z
     .array(

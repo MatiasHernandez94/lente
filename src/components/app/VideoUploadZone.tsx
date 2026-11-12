@@ -123,7 +123,7 @@ export function VideoUploadZone() {
     setError(null);
   };
 
-  const uploadFile = async (): Promise<string> => {
+  const uploadFile = async (): Promise<{ file: string; receipt: string }> => {
     const file = isCamera ? cameraBlob : uploadedFile;
     if (!file) {
       throw new Error(isCamera ? "Grabá un segmento antes de continuar." : "Seleccioná un archivo de video.");
@@ -142,6 +142,7 @@ export function VideoUploadZone() {
       let sourceRef: string | null = null;
       let title = "Video sin título";
       let fingerprint: string | undefined;
+      let uploadReceipt: string | undefined;
       const isYt = source === "youtube";
 
       if (isUpload && uploadedFile) {
@@ -172,7 +173,9 @@ export function VideoUploadZone() {
         sourceRef = ytUrl.trim();
         title = "Video de YouTube";
       } else {
-        sourceRef = await uploadFile();
+        const uploaded = await uploadFile();
+        sourceRef = uploaded.file;
+        uploadReceipt = uploaded.receipt;
         title = uploadedFile ? deriveTitle(uploadedFile) : "Video grabado";
       }
 
@@ -187,6 +190,7 @@ export function VideoUploadZone() {
           durationSeconds: 1800,
           players: [],
           fingerprint,
+          uploadReceipt,
         }),
       });
       const created = (await createRes.json()) as { video?: { id: string }; error?: string };
