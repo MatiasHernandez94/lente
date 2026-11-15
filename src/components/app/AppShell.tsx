@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListVideo, Target, Plus, Radio, LogOut, User, GraduationCap, Activity } from "lucide-react";
+import { LayoutDashboard, ListVideo, Target, Plus, Radio, LogOut, User, GraduationCap, Activity, Dumbbell } from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { logout } from "@/app/actions/auth";
 import type { UserRol } from "@/lib/schema";
@@ -17,6 +17,7 @@ interface AppShellProps {
 const NAV_ITEMS = [
   { href: "/app", label: "Resumen", icon: LayoutDashboard },
   { href: "/app/videos", label: "Videos", icon: ListVideo },
+  { href: "/app/entrenamientos", label: "Entrenar", icon: Dumbbell },
   { href: "/app/okrs", label: "OKRs", icon: Target },
   { href: "/app/perfil", label: "Perfil", icon: User },
 ];
@@ -104,7 +105,7 @@ export function AppShell({ userName, userRol, unreadAlumnos = 0, children }: App
           </div>
         </div>
 
-        <nav className="flex items-center border-t border-hairline px-2 md:hidden" aria-label="Navegación móvil">
+        <nav className="flex items-center overflow-x-auto border-t border-hairline px-2 md:hidden" aria-label="Navegación móvil">
           {navItems.map(({ href, label, icon: Icon }) => {
             const active = href === "/app" ? pathname === "/app" : pathname.startsWith(href);
             const badge = href === PROFESOR_NAV_ITEM.href ? <Badge /> : null;
@@ -113,7 +114,7 @@ export function AppShell({ userName, userRol, unreadAlumnos = 0, children }: App
                 key={href}
                 href={href}
                 aria-current={active ? "page" : undefined}
-                className={`flex flex-1 items-center justify-center gap-1.5 py-3 text-[12px] font-medium ${
+                  className={`flex min-w-fit flex-1 items-center justify-center gap-1.5 px-2 py-3 text-[12px] font-medium ${
                   active ? "border-b-2 border-ink text-ink" : "text-muted"
                 }`}
               >
