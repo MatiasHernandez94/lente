@@ -28,3 +28,8 @@
 - Tests añadidos antes de implementar: fases, existencia de fichas, descansos y prioridad de respuesta ante dolor. RED por módulo inexistente, GREEN en `npm test`: 131 tests. TypeScript, ESLint de archivos de entrenamientos y build OK (cinco advertencias preexistentes).
 - QA local autenticado parcial: aviso y bloqueo inicial, inicio, descanso, transición a sentadilla, imagen y detención anticipada. El formulario final y recorrido completo no se verificaron: la sesión local se cerró durante la prueba. No hay QA móvil. Antes de producción: revisión profesional, completar QA autenticado y definir conservación segura de respuestas y reglas de ajuste.
 - QA adicional: formulario tras detención, respuesta de esfuerzo fácil con dolor, y orientación de detener y consultar comprobados en navegador local. El recorrido completo y QA móvil siguen pendientes. El usuario solicitó expresamente publicar el borrador; no implica revisión profesional ni personalización.
+
+## Confirmación de revisión del contenido
+
+- El 17/11/2026, el usuario indicó en conversación que es personal trainer y confirmó haber revisado la rutina inicial con sus series y descansos, las 12 fichas existentes y las 8 imágenes incorporadas. Se registra su declaración; no se verificaron credenciales independientemente.
+- Alcance limitado al contenido existente en ese momento: no incluye los GIF, los MP4, las demás imágenes del ZIP ni futuros ejercicios o reglas de personalización. La rutina sigue siendo orientativa y no personalizada; las imágenes estáticas no prueban la técnica en movimiento.

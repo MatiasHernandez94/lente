@@ -21,7 +21,7 @@ export interface Exercise {
   caution: string;
 }
 
-/** Contenido inicial orientativo, pendiente de revisión profesional. */
+/** Contenido inicial orientativo revisado por un personal trainer. */
 export const EXERCISES: readonly Exercise[] = [
   {
     id: "peso-muerto-mancuernas", name: "Peso muerto rumano con mancuernas", category: "inferior",

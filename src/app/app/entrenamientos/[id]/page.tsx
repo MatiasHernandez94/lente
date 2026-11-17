@@ -27,7 +27,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
         <aside className="space-y-5">
           <div className="border border-hairline bg-surface p-5"><p className="label mb-3 text-muted">Equipamiento</p><p className="flex items-center gap-2 text-sm font-medium text-ink"><Dumbbell size={16} aria-hidden="true" />{exercise.equipment}</p></div>
           <div className="border border-hairline bg-canvas p-5"><p className="label mb-3 text-muted">Series y repeticiones</p><p className="text-sm leading-6 text-ink">{exercise.dosage}</p><p className="mt-3 text-xs leading-5 text-muted">No es una prescripción personalizada. Ajustá cargas, volumen y descanso con un profesional según tu experiencia y condición.</p></div>
-          <div className="border border-amber-800/25 bg-amber-50 p-5 text-sm leading-6 text-amber-950"><p className="font-semibold">Antes de empezar</p><p className="mt-2">Contenido pendiente de revisión profesional. {exercise.caution} Frená si aparece dolor y consultá a un profesional ante lesiones o dudas.</p></div>
+          <div className="border border-amber-800/25 bg-amber-50 p-5 text-sm leading-6 text-amber-950"><p className="font-semibold">Antes de empezar</p><p className="mt-2">Contenido revisado por un personal trainer. {exercise.caution} Frená si aparece dolor y consultá a un profesional ante lesiones o dudas.</p></div>
           <p className="text-xs leading-5 text-soft">El análisis de tu ejecución para este ejercicio todavía no está disponible.</p>
         </aside>
       </div>

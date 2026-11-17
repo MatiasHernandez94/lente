@@ -7,7 +7,7 @@ interface RoutineStep {
   restSeconds: number;
 }
 
-/** Borrador para revisión profesional; no es una prescripción individual. */
+/** Rutina revisada por un personal trainer; no es una prescripción individual. */
 export const BEGINNER_ROUTINE: readonly RoutineStep[] = [
   { phase: "Calentamiento", exerciseId: "movilidad-tobillo", prescription: "1 serie de 8 movimientos suaves por lado.", restSeconds: 60 },
   { phase: "Trabajo principal", exerciseId: "sentadilla-goblet", prescription: "2 series de 6 a 8 repeticiones, sin peso o con carga liviana y controlada.", restSeconds: 90 },

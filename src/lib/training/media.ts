@@ -1,4 +1,4 @@
-/** Referencias visuales preliminares, no demostraciones validadas. */
+/** Imágenes estáticas revisadas; no son demostraciones de movimiento. */
 export const TRAINING_IMAGES: Readonly<Record<string, string>> = {
   "sentadilla-goblet": "/training-references/sentadilla-goblet.webp",
   "remo-mancuerna": "/training-references/remo-mancuerna.webp",

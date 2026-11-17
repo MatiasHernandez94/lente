@@ -29,10 +29,10 @@ export default async function TrainingPage({ searchParams }: PageProps) {
       </header>
 
       <aside className="border border-amber-800/25 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-950">
-        <strong>Contenido orientativo, pendiente de revisión profesional.</strong> Las series no son un plan personalizado. Si tenés lesiones, dolor o dudas sobre las cargas, consultá a un profesional; frená si aparece dolor.
+        <strong>Contenido orientativo revisado por un personal trainer.</strong> Las series no son un plan personalizado. Si tenés lesiones, dolor o dudas sobre las cargas, consultá a un profesional; frená si aparece dolor.
       </aside>
 
-      <section className="flex flex-wrap items-center justify-between gap-4 border border-hairline bg-surface p-5"><div><h2 className="text-lg font-semibold text-ink">Rutina inicial guiada</h2><p className="mt-1 text-sm text-muted">Conocé el borrador de una sesión para principiantes, con ejercicios y descansos en orden.</p></div><Link href="/app/entrenamientos/guia" className="bg-ink px-5 py-3 text-sm font-medium text-canvas">Ver rutina inicial</Link></section>
+      <section className="flex flex-wrap items-center justify-between gap-4 border border-hairline bg-surface p-5"><div><h2 className="text-lg font-semibold text-ink">Rutina inicial guiada</h2><p className="mt-1 text-sm text-muted">Conocé una sesión orientativa para principiantes, con ejercicios y descansos en orden.</p></div><Link href="/app/entrenamientos/guia" className="bg-ink px-5 py-3 text-sm font-medium text-canvas">Ver rutina inicial</Link></section>
 
       <section aria-labelledby="biblioteca-title" className="space-y-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
