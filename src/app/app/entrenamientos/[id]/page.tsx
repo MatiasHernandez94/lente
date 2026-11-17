@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Dumbbell, VideoOff } from "lucide-react";
 import { CATEGORIES, getExercise } from "@/lib/training/catalog";
+import { TrainingReference } from "@/components/app/TrainingReference";
 
 export const metadata: Metadata = { title: "Ejercicio · Entrenamientos" };
 
@@ -18,6 +19,7 @@ export default async function ExercisePage({ params }: { params: Promise<{ id: s
       <header className="border-b border-hairline pb-7"><p className="label mb-3 text-muted">Baloncesto · {category?.label}</p><h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{exercise.name}</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-muted">{exercise.goal}</p></header>
       <div className="grid gap-8 lg:grid-cols-[1.35fr_1fr]">
         <div className="space-y-7">
+          <TrainingReference exerciseId={exercise.id} exerciseName={exercise.name} />
           <div className="flex min-h-64 flex-col items-center justify-center gap-3 border border-hairline bg-surface px-6 text-center"><VideoOff size={28} strokeWidth={1.5} className="text-soft" aria-hidden="true" /><p className="text-sm font-medium text-ink">Video de demostración pendiente</p><p className="max-w-sm text-xs leading-5 text-muted">La cápsula se incorporará después de validar que la demostración sea técnicamente correcta.</p></div>
           <section><h2 className="text-lg font-semibold text-ink">Cómo hacerlo</h2><ol className="mt-4 space-y-4">{exercise.steps.map((step, index) => <li key={step} className="flex gap-4 text-sm leading-6 text-muted"><span className="table-num text-sm font-semibold text-ink">{String(index + 1).padStart(2, "0")}</span><span>{step}</span></li>)}</ol></section>
           <section><h2 className="text-lg font-semibold text-ink">Puntos a cuidar</h2><ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-muted">{exercise.cues.map((cue) => <li key={cue}>{cue}</li>)}</ul></section>

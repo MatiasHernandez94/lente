@@ -3,13 +3,23 @@ import { test } from "node:test";
 import { CATEGORIES, EXERCISES, filterExercises, getExercise } from "./catalog.ts";
 
 test("el catálogo tiene identificadores únicos y categorías válidas", () => {
-  assert.ok(EXERCISES.length >= 5);
+  assert.ok(EXERCISES.length >= 12);
   assert.equal(new Set(EXERCISES.map((exercise) => exercise.id)).size, EXERCISES.length);
   for (const exercise of EXERCISES) {
     assert.ok(CATEGORIES.some((category) => category.id === exercise.category));
     assert.ok(exercise.steps.length >= 2);
     assert.ok(exercise.equipment.length > 0);
+    assert.ok(exercise.dosage.length > 0 && exercise.caution.length > 0);
+    assert.ok(exercise.cues.length >= 2);
   }
+  for (const category of CATEGORIES) {
+    assert.ok(EXERCISES.filter((exercise) => exercise.category === category.id).length >= 2);
+  }
+});
+
+test("encuentra las nuevas fichas por equipamiento y categoría", () => {
+  assert.ok(filterExercises({ category: "superior", query: "polea" }).some((item) => item.id === "jalon-pecho"));
+  assert.ok(filterExercises({ category: "movilidad", query: "colchoneta" }).some((item) => item.id === "rotacion-toracica"));
 });
 
 test("busca sin distinguir mayúsculas ni acentos", () => {

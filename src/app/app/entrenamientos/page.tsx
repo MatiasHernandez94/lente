@@ -32,6 +32,8 @@ export default async function TrainingPage({ searchParams }: PageProps) {
         <strong>Contenido orientativo, pendiente de revisión profesional.</strong> Las series no son un plan personalizado. Si tenés lesiones, dolor o dudas sobre las cargas, consultá a un profesional; frená si aparece dolor.
       </aside>
 
+      <section className="flex flex-wrap items-center justify-between gap-4 border border-hairline bg-surface p-5"><div><h2 className="text-lg font-semibold text-ink">Rutina inicial guiada</h2><p className="mt-1 text-sm text-muted">Conocé el borrador de una sesión para principiantes, con ejercicios y descansos en orden.</p></div><Link href="/app/entrenamientos/guia" className="bg-ink px-5 py-3 text-sm font-medium text-canvas">Ver rutina inicial</Link></section>
+
       <section aria-labelledby="biblioteca-title" className="space-y-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div><p className="label mb-2 text-soft">Biblioteca · Gimnasio</p><h2 id="biblioteca-title" className="text-xl font-semibold text-ink">Elegí qué querés trabajar</h2></div>
